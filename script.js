@@ -164,10 +164,15 @@ class RiskDashboard {
                 });
                 window.addEventListener('beforeunload', () => { try { if (this.updateInterval) clearInterval(this.updateInterval); } catch (e) {} });
             } catch (e) { /* non-fatal */ }
+
+            // Apply powered-off default state and disable hover reveals until engine is on
+            try { this._injectPoweredOffNoHoverStyle(); this.applyPowerState(); } catch (e) { /* ignore */ }
         } catch (err) {
             console.error('Initialization failed', err);
             this.data = this.getDefaultData();
             this.updateDashboard();
+            // Even on failure, ensure default powered-off state is applied
+            try { this._injectPoweredOffNoHoverStyle(); this.applyPowerState(); } catch (e) { /* ignore */ }
         }
     }
 
@@ -706,7 +711,8 @@ class RiskDashboard {
                 [() => this.createEngineOverlay(), 'createEngineOverlay failed'],
                 [() => this._updatePoweredOffBlocker(), 'update powered-off blocker failed'],
                 [() => this._injectPoweredOffNoHoverStyle(), 'inject powered-off stylesheet failed'],
-                [() => this._applyInlineDim(), 'apply inline dim failed']
+                [() => this._applyInlineDim(), 'apply inline dim failed'],
+                [() => this.applyPowerState(), 'applyPowerState failed']
             ]);
 
             // Auto-calibrate fuel and temperature pointers and apply any stored/pending values
@@ -723,19 +729,19 @@ class RiskDashboard {
 
                 // Apply data values if present, otherwise flush any pending slider values stored on window
                 try {
-                    if (this.data && typeof this.data.fuelValue !== 'undefined') {
+                    if (this.engineActive && this.data && typeof this.data.fuelValue !== 'undefined') {
                         this.updateFuelPointer(this.data.fuelValue);
-                    } else if (typeof window.__pendingFuelValue !== 'undefined' && typeof this.setFuelValue === 'function') {
+                    } else if (this.engineActive && typeof window.__pendingFuelValue !== 'undefined' && typeof this.setFuelValue === 'function') {
                         this.setFuelValue(window.__pendingFuelValue);
                         delete window.__pendingFuelValue;
                     } else {
-                        // No stored or pending fuel value: set pointer to zero (calibrated zero)
+                        // Keep pointer at calibrated zero while off
                         try { if (typeof this._fuelAngle0 === 'number') this.updateFuelPointer(0); } catch (e) {}
                     }
                 } catch (e) { console.warn('Applying fuel value failed', e); }
 
                 try {
-                    if (this.data && typeof this.data.tempValue !== 'undefined') {
+                    if (this.engineActive && this.data && typeof this.data.tempValue !== 'undefined') {
                         // Ensure pointer is visually at calibrated zero immediately, then animate to current value
                         try {
                             const g = this.carDashboardSVG.querySelector('#temp-pointer');
@@ -746,7 +752,7 @@ class RiskDashboard {
                         } catch (ee) { /* ignore */ }
                         // schedule animation in next frame so the transition is visible
                         requestAnimationFrame(() => { try { this.updateTempPointer(this.data.tempValue); } catch (e) {} });
-                    } else if (typeof window.__pendingTempValue !== 'undefined' && typeof this.setTempValue === 'function') {
+                    } else if (this.engineActive && typeof window.__pendingTempValue !== 'undefined' && typeof this.setTempValue === 'function') {
                         this.setTempValue(window.__pendingTempValue);
                         delete window.__pendingTempValue;
                     } else {
@@ -756,7 +762,7 @@ class RiskDashboard {
                                 const g = this.carDashboardSVG.querySelector('#temp-pointer');
                                 if (g) g.setAttribute('transform', `rotate(${this._tempAngle0} ${this.tempHubX} ${this.tempHubY})`);
                                 this._lastTempAngle = this._tempAngle0;
-                                this.updateTempPointer(0);
+                                // keep at zero while off
                             }
                         } catch (e) { /* ignore */ }
                     }
@@ -1239,6 +1245,8 @@ class RiskDashboard {
             try { img.setAttribute('aria-pressed', String(!!this.engineActive)); } catch (e) {}
             // Dispatch engine-toggle for external listeners; do not apply any global dimming.
             try { window.dispatchEvent(new CustomEvent('engine-toggle', { detail: { active: this.engineActive } })); } catch (e) { /* ignore */ }
+            // Apply global power state (on/off)
+            try { this.applyPowerState(); } catch (e) { /* ignore */ }
         };
 
         img.addEventListener('click', toggle);
@@ -1256,32 +1264,141 @@ class RiskDashboard {
     return null;
     }
 
-    _updatePoweredOffBlocker() {
-    // No-op: powered-off blocker behavior disabled.
-    return;
-    }
+    _updatePoweredOffBlocker() { return; }
 
     // Inject a runtime stylesheet to prevent hover/focus from temporarily undimming
     // the dashboard while .powered-off is present. This keeps the current dim value
     // unchanged and applies at runtime so it survives CSS file reversion.
     _injectPoweredOffNoHoverStyle() {
-    // No-op: we no longer inject runtime styles for powered-off state.
-    return;
+        // Inject a stylesheet that disables hover/animation and interactions while powered-off,
+        // but keeps the engine-start-stop button visible and clickable.
+        if (document.getElementById('powered-off-style')) return;
+    const css = `
+    body.powered-off * { cursor: default !important; }
+    body.powered-off .right-panel,
+    body.powered-off .alert-panel,
+    body.powered-off .control-environment,
+    body.powered-off .control-item,
+    body.powered-off .service-card { pointer-events: none !important; }
+    body.powered-off .car-dashboard-wrapper { filter: grayscale(0.7) brightness(0.5); }
+    /* Darken the right panel as well when powered off */
+    body.powered-off .right-panel { position: relative; filter: grayscale(0.8) brightness(0.35); }
+    body.powered-off .right-panel::after { content: ''; position: absolute; inset: 0; background: rgba(0,0,0,0.8); border-radius: inherit; pointer-events: none; z-index: 1; }
+    /* Keep SVG interactive only for the engine button */
+    body.powered-off #car-dashboard-svg svg *:not(#engine-start-stop) { pointer-events: none !important; }
+    body.powered-off #car-dashboard-svg #engine-start-stop { pointer-events: auto !important; opacity: 1 !important; filter: none !important; }
+    body.powered-off #car-dashboard-svg *:not(#engine-start-stop) { transition: none !important; }
+    /* Ensure the HTML overlay button stays clickable and shows pointer even when off */
+    body.powered-off .engine-start-overlay { pointer-events: auto !important; cursor: pointer !important; }
+    /* Neutralize hover/focus visual pops while off */
+    body.powered-off .control-item:hover,
+    body.powered-off .control-item:focus,
+    body.powered-off .service-card:hover,
+    body.powered-off .service-card:focus,
+    body.powered-off .dashboard-start-button:hover { transform: none !important; box-shadow: none !important; }
+    /* Stop blinking/animations while off */
+    body.powered-off .warning-blink,
+    body.powered-off .alert-critical.blinking,
+    body.powered-off .service-card-action.blinking { animation: none !important; }
+    /* Visual-only overlay when off */
+    .powered-off-overlay { position:absolute; inset:0; z-index:2; pointer-events:none; background: radial-gradient(120% 80% at 50% 50%, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.9) 78%); }
+    `;
+        const style = document.createElement('style');
+        style.id = 'powered-off-style';
+        style.textContent = css;
+        document.head.appendChild(style);
     }
 
     // Apply inline styles to SVG descendants to ensure the powered-off dim is enforced
     // This uses element.style to apply !important-like behavior by setting properties directly
     // and re-applying them while powered-off. It avoids changing stylesheet files.
-    _applyInlineDim() {
-    // No-op: inline dim application removed.
-    return;
-    }
+    _applyInlineDim() { return; }
 
     // Create an absolutely-positioned HTML overlay for the engine-start-stop image so it
-    // remains fully visible and interactive even when the embedded SVG element is dimmed
+    // remains fully visible and interactive even when the embedded SVG/SVG filters are dimmed.
+    // The overlay mirrors the SVG button position and size and sits above the powered-off overlay.
     createEngineOverlay() {
-    // No-op: overlay not created when dimming features disabled.
-    return;
+        try {
+            const host = document.querySelector('.car-dashboard-wrapper');
+            if (!host || !this.carDashboardSVG) return;
+            // Avoid duplicates
+            let overlayBtn = host.querySelector('.engine-start-overlay');
+            if (!overlayBtn) {
+                overlayBtn = document.createElement('button');
+                overlayBtn.className = 'engine-start-overlay';
+                overlayBtn.type = 'button';
+                overlayBtn.setAttribute('aria-label', 'Engine Start/Stop');
+                overlayBtn.style.position = 'absolute';
+                overlayBtn.style.zIndex = '3'; // above .powered-off-overlay (z-index:2)
+                overlayBtn.style.border = 'none';
+                overlayBtn.style.background = 'transparent';
+                overlayBtn.style.padding = '0';
+                overlayBtn.style.cursor = 'pointer';
+                overlayBtn.style.display = 'inline-grid';
+                overlayBtn.style.placeItems = 'center';
+                // inner image
+                const img = document.createElement('img');
+                img.alt = 'Engine Start Stop';
+                img.src = 'assets/Engine Start Stop.png';
+                img.style.width = '100%';
+                img.style.height = '100%';
+                img.style.pointerEvents = 'none';
+                overlayBtn.appendChild(img);
+                host.appendChild(overlayBtn);
+                // Wire events to toggle state
+                overlayBtn.addEventListener('click', () => {
+                    const svgImg = this.carDashboardSVG.getElementById('engine-start-stop');
+                    this._toggleEngineFromOverlay(overlayBtn, svgImg);
+                });
+                overlayBtn.addEventListener('keydown', (ev) => {
+                    if (ev.key === 'Enter' || ev.key === ' ' || ev.key === 'Spacebar') {
+                        ev.preventDefault();
+                        const svgImg = this.carDashboardSVG.getElementById('engine-start-stop');
+                        this._toggleEngineFromOverlay(overlayBtn, svgImg);
+                    }
+                });
+            }
+
+            // Initial aria pressed sync
+            try { overlayBtn.setAttribute('aria-pressed', String(!!this.engineActive)); } catch (e) {}
+
+            // Position the overlay to match the SVG button
+            const svgBtn = this.carDashboardSVG.getElementById('engine-start-stop');
+            if (!svgBtn) return;
+            // Position absolutely inside the dashboard wrapper so it stays anchored to the SVG
+            overlayBtn.style.position = 'absolute';
+            const hostRect = host.getBoundingClientRect();
+            const bRect = svgBtn.getBoundingClientRect();
+            const left = Math.round(bRect.left - hostRect.left);
+            const top = Math.round(bRect.top - hostRect.top);
+            const w = Math.round(bRect.width);
+            const h = Math.round(bRect.height);
+            overlayBtn.style.left = left + 'px';
+            overlayBtn.style.top = top + 'px';
+            overlayBtn.style.width = w + 'px';
+            overlayBtn.style.height = h + 'px';
+
+            // Reposition on resize
+        const reposition = () => {
+                try {
+            const hr = host.getBoundingClientRect();
+            const br = svgBtn.getBoundingClientRect();
+            overlayBtn.style.left = Math.round(br.left - hr.left) + 'px';
+            overlayBtn.style.top = Math.round(br.top - hr.top) + 'px';
+                    overlayBtn.style.width = Math.round(br.width) + 'px';
+                    overlayBtn.style.height = Math.round(br.height) + 'px';
+                } catch (e) { /* ignore */ }
+            };
+            // Store and attach a single listener
+            if (!this._engineOverlayReposition) {
+                this._engineOverlayReposition = reposition;
+                window.addEventListener('resize', this._engineOverlayReposition);
+                window.addEventListener('scroll', this._engineOverlayReposition, { passive: true });
+            } else {
+                // run once in case sizes changed
+                this._engineOverlayReposition();
+            }
+        } catch (e) { /* ignore */ }
     }
 
     _toggleEngineFromOverlay(overlay, svgImg) {
@@ -1290,6 +1407,7 @@ class RiskDashboard {
     try { if (svgImg) svgImg.setAttribute('aria-pressed', String(!!this.engineActive)); } catch (e) {}
     try { overlay.setAttribute('aria-pressed', String(!!this.engineActive)); } catch (e) {}
     try { window.dispatchEvent(new CustomEvent('engine-toggle', { detail: { active: this.engineActive } })); } catch (e) {}
+    try { this.applyPowerState(); } catch (e) {}
     }
 
     // Enforce that value 0 appears on the left and value 40 on the right.
@@ -1813,48 +1931,58 @@ class RiskDashboard {
         this.updateSVGWarningLights();
         const gaugeValue = (typeof this.data?.gaugeValue !== 'undefined') ? this.data.gaugeValue : 0;
         try {
-            // If a speed animation is currently running, avoid overriding it with an immediate set
-            if (!(this._speedAnim && this._speedAnim.cancelled === false)) {
-                this.updateSpeedPointer(gaugeValue);
+            if (!this.engineActive) {
+                // car off: point to zero
+                this.setGaugeToZero();
             } else {
-                // animation in progress; let it finish and rely on its finalization to set state
-                console.debug('Skipping immediate speed pointer update during initial sweep');
+                // If a speed animation is currently running, avoid overriding it with an immediate set
+                if (!(this._speedAnim && this._speedAnim.cancelled === false)) {
+                    this.updateSpeedPointer(gaugeValue);
+                } else {
+                    console.debug('Skipping immediate speed pointer update during initial sweep');
+                }
             }
         } catch (e) { /* non-fatal */ }
         const digital = document.getElementById('speed-gauge-value');
-        if (digital) digital.textContent = gaugeValue;
+        if (digital) digital.textContent = this.engineActive ? gaugeValue : '';
         if (this.carDashboardSVG) {
             const gaugeText = this.carDashboardSVG.getElementById('gauge-dynamic-value');
-            if (gaugeText) gaugeText.textContent = gaugeValue;
+            if (gaugeText) gaugeText.textContent = this.engineActive ? gaugeValue : '';
             const percentText = this.carDashboardSVG.getElementById('percent-dynamic-value');
-            if (percentText && typeof this.data?.percentValue !== 'undefined') {
-                percentText.textContent = this.data.percentValue + '%';
-                // reflect percentValue on rpm pointer dynamically
-                try { if (typeof this.setRpmPercent === 'function') this.setRpmPercent(Number(this.data.percentValue)); } catch (e) { console.warn('setRpmPercent error', e); }
+            if (percentText) {
+                if (this.engineActive && typeof this.data?.percentValue !== 'undefined') {
+                    percentText.textContent = this.data.percentValue + '%';
+                    // reflect percentValue on rpm pointer dynamically (engine on)
+                    try { if (typeof this.setRpmPercent === 'function') this.setRpmPercent(Number(this.data.percentValue)); } catch (e) { console.warn('setRpmPercent error', e); }
+                } else {
+                    percentText.textContent = '';
+                    // keep rpm at zero while off
+                    try { if (typeof this.setRpmToZero === 'function') this.setRpmToZero(); } catch (e) { /* ignore */ }
+                }
             }
             const dyn287 = this.carDashboardSVG.getElementById('dynamic-value-287');
-            if (dyn287 && typeof this.data?.dynamicValue287 !== 'undefined') {
-                dyn287.textContent = this.data.dynamicValue287;
+            if (dyn287) {
+                dyn287.textContent = (this.engineActive && typeof this.data?.dynamicValue287 !== 'undefined') ? this.data.dynamicValue287 : '';
             }
             const dyn285 = this.carDashboardSVG.getElementById('dynamic-value-285');
-            if (dyn285 && typeof this.data?.dynamicValue285 !== 'undefined') {
-                dyn285.textContent = this.data.dynamicValue285;
+            if (dyn285) {
+                dyn285.textContent = (this.engineActive && typeof this.data?.dynamicValue285 !== 'undefined') ? this.data.dynamicValue285 : '';
             }
             const ytdEvents = this.carDashboardSVG.getElementById('ytd-risk-events');
-            if (ytdEvents && typeof this.data?.ytdRiskEvents !== 'undefined') {
-                ytdEvents.textContent = 'YTD Risk Events: ' + this.data.ytdRiskEvents;
+            if (ytdEvents) {
+                ytdEvents.textContent = (this.engineActive && typeof this.data?.ytdRiskEvents !== 'undefined') ? ('YTD Risk Events: ' + this.data.ytdRiskEvents) : '';
             }
             const grossLoss = this.carDashboardSVG.getElementById('gross-loss-value');
-            if (grossLoss && typeof this.data?.grossLossValue !== 'undefined') {
-                grossLoss.textContent = 'Gross Loss: ' + this.data.grossLossValue;
+            if (grossLoss) {
+                grossLoss.textContent = (this.engineActive && typeof this.data?.grossLossValue !== 'undefined') ? ('Gross Loss: ' + this.data.grossLossValue) : '';
             }
             const netLoss = this.carDashboardSVG.getElementById('net-loss-value');
-            if (netLoss && typeof this.data?.netLossValue !== 'undefined') {
-                netLoss.textContent = 'Net Loss: ' + this.data.netLossValue;
+            if (netLoss) {
+                netLoss.textContent = (this.engineActive && typeof this.data?.netLossValue !== 'undefined') ? ('Net Loss: ' + this.data.netLossValue) : '';
             }
             const issuesOpen = this.carDashboardSVG.getElementById('issues-open-value');
-            if (issuesOpen && typeof this.data?.issuesOpenValue !== 'undefined') {
-                issuesOpen.textContent = 'Issues Open: ' + this.data.issuesOpenValue;
+            if (issuesOpen) {
+                issuesOpen.textContent = (this.engineActive && typeof this.data?.issuesOpenValue !== 'undefined') ? ('Issues Open: ' + this.data.issuesOpenValue) : '';
             }
         }
         this.updateTimestamp();
@@ -2222,53 +2350,55 @@ class RiskDashboard {
         }
         const g = this.carDashboardSVG.querySelector('#speed-pointer');
         if (!g) return;
-        const angle = this.valueToAngle(value);
-        // Direction-stable smoothing: always choose the shortest forward path when increasing,
-        // and shortest backward path when decreasing, avoiding brief opposite twitches.
-        if (typeof this._lastPointerAngle !== 'number') {
-            this._lastPointerAngle = angle;
-        } else {
-            const prevVal = (this._lastGaugeValue ?? value);
-            const prevAngle = this._lastPointerAngle;
-            let target = angle;
-            // Normalize previous angle into [0,360) to keep numbers bounded
-            const basePrev = ((prevAngle % 360) + 360) % 360;
-            // Consider candidates target + k*360 so delta direction stays consistent
-            const candidates = [target, target + 360, target - 360];
+        // Keep at zero while engine is off
+        if (!this.engineActive) {
+            const a0 = (this.speedTickMap && this.speedTickMap.has(0)) ? this.speedTickMap.get(0) : -90;
+            const hubX = this.gaugeHubX, hubY = this.gaugeHubY;
+            g.setAttribute('transform', `rotate(${a0} ${hubX} ${hubY})`);
+            this._lastPointerAngle = a0; this._lastGaugeValue = 0;
+            return;
+        }
+        // Compute target angle and choose nearest equivalent to avoid wrap jumps
+        const rawTarget = this.valueToAngle(value);
+        const prevAngle = (typeof this._lastPointerAngle === 'number') ? this._lastPointerAngle : rawTarget;
+        const prevVal = (typeof this._lastGaugeValue === 'number') ? this._lastGaugeValue : value;
+        let target = rawTarget;
+        {
+            const candidates = [rawTarget, rawTarget + 360, rawTarget - 360];
             let best = candidates[0];
             let bestDelta = Math.abs(candidates[0] - prevAngle);
-            candidates.forEach(c => {
-                const d = Math.abs(c - prevAngle);
-                if (d < bestDelta) { best = c; bestDelta = d; }
-            });
-            // If value increased, forbid net negative rotation (no anticlockwise); if best causes negative delta, add 360
-            if (value > prevVal && best < prevAngle) {
-                best += 360;
+            for (let i = 1; i < candidates.length; i++) {
+                const d = Math.abs(candidates[i] - prevAngle);
+                if (d < bestDelta) { best = candidates[i]; bestDelta = d; }
             }
-            // If value decreased, forbid net positive rotation; if best causes positive delta, subtract 360
-            if (value < prevVal && best > prevAngle) {
-                best -= 360;
-            }
-            // Avoid huge accumulated angle: if both >720 or <-720 compress by removing multiples of 360 keeping visual angle
-            if (Math.abs(best) > 720) {
-                const normalized = ((best % 360) + 360) % 360; // 0..359
-                // Preserve trend direction: if moving up keep within previous + delta sign
-                if (value >= prevVal && normalized < basePrev) {
-                    this._lastPointerAngle = normalized + 360; // keep forward continuity
-                } else if (value < prevVal && normalized > basePrev) {
-                    this._lastPointerAngle = normalized - 360; // keep backward continuity
-                } else {
-                    this._lastPointerAngle = normalized;
-                }
-            } else {
-                this._lastPointerAngle = best;
-            }
+            // Keep rotation direction consistent with value change
+            if (value > prevVal && best < prevAngle) best += 360;
+            if (value < prevVal && best > prevAngle) best -= 360;
+            target = best;
         }
-        this._lastGaugeValue = value;
-        const renderAngle = this._lastPointerAngle;
+        // Animate via rAF using only SVG attribute transforms
         const hubX = this.gaugeHubX, hubY = this.gaugeHubY;
-        try { g.style.transformOrigin = `${hubX}px ${hubY}px`; g.style.transform = `rotate(${renderAngle}deg)`; } catch (e) { /* ignore */ }
-        g.setAttribute('transform', `rotate(${renderAngle} ${hubX} ${hubY})`);
+        // cancel any running speed animation
+        if (this._speedAnim && this._speedAnim.cancelled === false) this._speedAnim.cancelled = true;
+        const anim = { cancelled: false };
+        this._speedAnim = anim;
+        const from = prevAngle;
+        const to = target;
+        const start = performance.now();
+        const dur = 400;
+        const easeOutCubic = x => 1 - Math.pow(1 - x, 3);
+        const step = (now) => {
+            if (anim.cancelled) return;
+            const t = Math.min(1, (now - start) / dur);
+            const u = easeOutCubic(t);
+            const cur = from + (to - from) * u;
+            g.setAttribute('transform', `rotate(${cur} ${hubX} ${hubY})`);
+            if (t < 1) requestAnimationFrame(step); else {
+                this._lastPointerAngle = to;
+                this._lastGaugeValue = value;
+            }
+        };
+        requestAnimationFrame(step);
     // single speed pointer only; no secondary mirroring
     }
 
@@ -2351,7 +2481,7 @@ class RiskDashboard {
             if (firstTick && firstTick.parentNode) firstTick.parentNode.insertBefore(group, firstTick); else svg.appendChild(group);
         }
     // no secondary pointer creation - single speed pointer only
-        // Apply current gaugeValue so pointer shows correct position with a visible sweep from zero
+        // Apply current gaugeValue; keep pointer at zero while engine is off
         const initVal = (typeof this.data?.gaugeValue !== 'undefined') ? this.data.gaugeValue : 0;
         try {
             const g = svg.querySelector('#speed-pointer');
@@ -2364,8 +2494,8 @@ class RiskDashboard {
                 this._lastPointerAngle = a0;
                 this._lastGaugeValue = 0;
             }
-            // animate to initial value if non-zero so user sees the sweep
-            if (initVal && initVal !== 0) {
+            // Animate to initial value only if engine is ON
+            if (this.engineActive && initVal && initVal !== 0) {
                 // cancel any running speed animation
                 if (this._speedAnim && this._speedAnim.cancelled === false) this._speedAnim.cancelled = true;
                 const anim = { cancelled: false };
@@ -2391,8 +2521,8 @@ class RiskDashboard {
                 };
                 requestAnimationFrame(step);
             } else {
-                // keep at zero
-                try { if (typeof this.data?.gaugeValue !== 'undefined') this._lastGaugeValue = this.data.gaugeValue; } catch (e) {}
+                // keep at zero until engine is turned on
+                try { if (typeof this.data?.gaugeValue !== 'undefined') this._lastGaugeValue = 0; } catch (e) {}
             }
         } catch (e) { /* ignore */ }
     }
@@ -2408,6 +2538,102 @@ class RiskDashboard {
             const gaugeText = this.carDashboardSVG.getElementById('gauge-dynamic-value');
             if (gaugeText) gaugeText.textContent = this.data.gaugeValue;
         }
+    }
+
+    // Apply the global power state by toggling a class on <body> and syncing the button aria.
+    applyPowerState() {
+        try {
+            document.body.classList.toggle('powered-off', !this.engineActive);
+            const img = this.carDashboardSVG && this.carDashboardSVG.getElementById('engine-start-stop');
+            if (img) img.setAttribute('aria-pressed', String(!!this.engineActive));
+            // Manage powered-off visual overlay
+            const host = document.querySelector('.car-dashboard-wrapper');
+            if (host) {
+                let overlay = host.querySelector('.powered-off-overlay');
+                if (!this.engineActive) {
+                    if (!overlay) {
+                        overlay = document.createElement('div');
+                        overlay.className = 'powered-off-overlay';
+                        host.appendChild(overlay);
+                    }
+                    // Snap pointers to zero when turning off
+                    this.snapPointersToZero();
+                    // RPM to zero
+                    try { if (typeof this.setRpmToZero === 'function') this.setRpmToZero(); } catch (e) {}
+                } else if (overlay) {
+                    overlay.remove();
+                    // When turning on, animate to current data values
+                    this.animatePointersToCurrent();
+                    // RPM animate to current percent, if present
+                    try {
+                        const pv = (typeof this.data?.percentValue !== 'undefined') ? Number(this.data.percentValue) : null;
+                        if (pv !== null && typeof this.setRpmPercent === 'function') this.setRpmPercent(pv);
+                    } catch (e) { /* ignore */ }
+                }
+                // Reflect text fields immediately on power toggle
+                try { this.updateDashboard(); } catch (e) { /* ignore */ }
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    // Set all pointers to calibrated zero positions
+    snapPointersToZero() {
+        try {
+            // Speed
+            if (this.carDashboardSVG) {
+                const g = this.carDashboardSVG.querySelector('#speed-pointer');
+                const a0 = (this.speedTickMap && this.speedTickMap.has(0)) ? this.speedTickMap.get(0) : -90;
+                if (g) {
+                    g.setAttribute('transform', `rotate(${a0} ${this.gaugeHubX} ${this.gaugeHubY})`);
+                    this._lastPointerAngle = a0;
+                    this._lastGaugeValue = 0;
+                }
+            }
+            // Fuel
+            if (typeof this._fuelAngle0 === 'number') this.updateFuelPointer(0);
+            // Temp
+            if (this.carDashboardSVG) {
+                const tp = this.carDashboardSVG.querySelector('#temp-pointer');
+                if (tp && typeof this._tempAngle0 === 'number') {
+                    tp.setAttribute('transform', `rotate(${this._tempAngle0} ${this.tempHubX} ${this.tempHubY})`);
+                    this._lastTempAngle = this._tempAngle0;
+                }
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    // Back-compat alias for earlier code paths
+    setGaugeToZero() { try { this.snapPointersToZero(); } catch (e) { /* ignore */ } }
+
+    // Animate pointers to their current data values when powering on
+    animatePointersToCurrent() {
+        try {
+            const gv = (typeof this.data?.gaugeValue !== 'undefined') ? this.data.gaugeValue : 0;
+            this.updateSpeedPointer(gv);
+        } catch (e) { /* ignore */ }
+        try {
+            if (typeof this.data?.fuelValue !== 'undefined') this.updateFuelPointer(this.data.fuelValue);
+        } catch (e) { /* ignore */ }
+        try {
+            if (typeof this.data?.tempValue !== 'undefined') this.updateTempPointer(this.data.tempValue);
+        } catch (e) { /* ignore */ }
+    }
+
+    // RPM: snap to zero immediately
+    setRpmToZero() {
+        const svg = this.carDashboardSVG; if (!svg) return;
+        const el = svg.querySelector('#rpm-pointer'); if (!el) return;
+        try {
+            const hubNode = svg.querySelector('#rpm-pointer circle');
+            let hubX = 255.58, hubY = 306.63;
+            if (hubNode) { hubX = Number(hubNode.getAttribute('cx')) || hubX; hubY = Number(hubNode.getAttribute('cy')) || hubY; }
+            const zeroMark = svg.getElementById('rpm-zero-mark');
+            if (zeroMark) {
+                const a0 = this._angleBetween(hubX, hubY, zeroMark);
+                el.setAttribute('transform', `rotate(${a0} ${hubX} ${hubY})`);
+                this._lastRpmAngle = a0;
+            }
+        } catch (e) { /* ignore */ }
     }
 
     // RPM subsystem removed: runtime pointer and APIs intentionally deleted
