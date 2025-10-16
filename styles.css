@@ -1,3 +1,141 @@
+
+/* Inline detail panel shown inside control-item when drilled */
+.control-inline-detail { background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border: 1px solid rgba(255,255,255,0.04); border-radius: 6px; padding: 8px; margin-top: 8px; }
+.control-inline-detail table td { border-top: 1px solid rgba(255,255,255,0.03); }
+.control-inline-detail strong, .control-inline-detail b { color: #e6eef5; }
+/* prevent child elements from showing click cursor; only the container is clickable */
+.control-inline-detail * { cursor: default !important; }
+/* When the inline detail is long, constrain its height and allow scrolling */
+.control-inline-detail {
+  max-height: 220px; /* reasonable default for the right-panel */
+  overflow-y: auto;
+  overscroll-behavior: contain; /* keep scroll within the panel */
+  padding-right: 6px; /* room for scrollbar */
+}
+
+/* Subtle custom scrollbar for modern browsers */
+.control-inline-detail { scrollbar-width: thin; scrollbar-color: var(--status-blue) rgba(255,255,255,0.02); }
+.control-inline-detail::-webkit-scrollbar { width: 12px; height: 12px; }
+.control-inline-detail::-webkit-scrollbar-thumb { background: var(--status-blue); border-radius: 8px; border: 2px solid rgba(0,0,0,0.12); box-shadow: var(--glow-blue); }
+.control-inline-detail::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--status-blue) 80%, #ffffff); box-shadow: 0 0 12px rgba(0,184,212,0.45); }
+.control-inline-detail::-webkit-scrollbar-track { background: rgba(255,255,255,0.02); border-radius: 8px; }
+
+/* When a control-item is opened, allow the inline detail to expand larger and slightly reduce font-size */
+.control-item.control-open .control-inline-detail {
+  /* make the expanded detail much larger so it is clearly visible and usable
+     use a viewport-relative maximum so tall screens get a larger panel */
+  max-height: min(720px, 60vh); /* up to 60% of viewport or 720px */
+  overflow-y: auto;
+  font-size: 0.88em; /* slightly smaller text to fit more content comfortably */
+  padding-right: 10px;
+  padding-left: 10px;
+  padding-top: 10px;
+  padding-bottom: 12px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.45);
+  background: linear-gradient(180deg, rgba(20,20,20,0.9), rgba(14,8,10,0.95));
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+/* Overlay variant: when using an overlay we append the detail into the .right-panel
+   and position it absolutely so it doesn't push layout. A translucent backdrop
+   dims everything except the focused panel. */
+.control-inline-detail.overlay {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  width: calc(100% - 24px);
+  z-index: 1200;
+  margin-top: 0 !important;
+  border-radius: 10px;
+  box-shadow: 0 18px 40px rgba(0,0,0,0.75), 0 6px 14px rgba(0,0,0,0.6);
+  background: linear-gradient(180deg, rgba(18,12,15,0.98), rgba(12,6,8,0.98));
+  border: 1px solid rgba(255,255,255,0.06);
+  padding: 12px;
+  overflow-y: auto;
+  max-height: min(720px, 70vh);
+}
+
+/* Reduce body text size inside overlay to make more content visible */
+.control-inline-detail.overlay,
+.control-inline-detail.overlay .control-inline-grid,
+.control-inline-detail.overlay table,
+.control-inline-detail.overlay td,
+.control-inline-detail.overlay th,
+.control-inline-detail.overlay p,
+.control-inline-detail.overlay li {
+  font-size: 0.78rem; /* further reduced */
+  line-height: 1.06;
+}
+
+.control-inline-detail.overlay .overlay-title { font-size: 0.94rem; }
+
+/* Backdrop inside the right panel that dims other controls while an overlay is open */
+.control-inline-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 1100;
+  /* stronger dimming when overlay is open */
+  background: rgba(0,0,0,0.78);
+  border-radius: 8px;
+}
+
+/* Dim non-focused control items when an overlay is open */
+.control-item.dimmed-by-overlay {
+  opacity: 0.12;
+  filter: blur(0.6px) saturate(0.75) contrast(0.85);
+  pointer-events: none;
+}
+
+/* Dim the control-environment heading/section when overlay is active */
+.control-environment.dimmed-by-overlay {
+  /* hide the heading entirely while overlay is open */
+  display: none !important;
+}
+
+/* Overlay title shown at the top of the focused detail panel */
+.overlay-title {
+  font-size: 1.05rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  padding-bottom: 6px;
+}
+
+/* Close button for overlay: top-right, unobtrusive but clear */
+.control-inline-detail.overlay .overlay-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 1299;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.06);
+  color: #e6eef5;
+  padding: 2px 6px; /* smaller so it sits tighter in corner */
+  border-radius: 6px;
+  font-size: 0.76rem;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transform-origin: top right;
+}
+.control-inline-detail.overlay .overlay-close:hover { background: rgba(255,255,255,0.02); transform: translateY(-1px); }
+.control-inline-detail.overlay .overlay-close:active { transform: translateY(0); }
+
+/* Styled X inside close button */
+.control-inline-detail.overlay .overlay-close .overlay-close-x {
+  color: #ff4d4f; /* stylish red */
+  font-weight: 700;
+  margin: 0 6px 0 0;
+  font-size: 1.08rem; /* slightly larger than label */
+  line-height: 1;
+  text-shadow: 0 1px 0 rgba(0,0,0,0.55), 0 0 6px rgba(255,77,79,0.18);
+}
+.control-inline-detail.overlay .overlay-close .overlay-close-label {
+  color: #e6eef5;
+  opacity: 0.88;
+  font-weight: 600;
+}
+
+.control-inline-detail.overlay { z-index: 1200; }
 :root {
   /* ABSA maroon theme */
   --absa-red: #7A001F; /* primary maroon */
@@ -38,6 +176,15 @@
   --anim-ease: cubic-bezier(.22,.9,.27,1);
 }
 
+/* Ensure the whole control-item shows pointer (clickable hand) even when the page is in powered-off state
+   which sets body.powered-off * { cursor: default !important; } via inline styles. This targeted override
+   forces pointer for control items and their visible name/status so users see the clickable affordance. */
+body.powered-off .control-item.clickable,
+body.powered-off .control-item.clickable .control-name,
+body.powered-off .control-item.clickable .control-status {
+  cursor: pointer !important;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -60,16 +207,31 @@ body {
   width: 100vw;
   background: #000 !important;
   overflow: hidden;
+  /* Layout tuning: allow exact viewport fitting via CSS variables */
+  --header-height: 48px; /* header thickness */
+  --right-panel-width: clamp(320px, 26vw, 440px); /* responsive right panel width */
+  --gutter: 12px;
 }
 
 .dashboard-header-thin {
   background: var(--absa-red);
   padding: 0.2rem 0.5rem;
   text-align: center;
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 0;
+  display: block;
+  height: auto;
 }
 
 .dashboard-header-thin h1 {
-  font-size: 1rem;
+  font-size: clamp(1.2rem, 2vw, 2.2rem);
+  margin: 0;
+  line-height: 1.1;
+  height: calc(1.1 * clamp(1.2rem, 2vw, 2.2rem));
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--text-primary);
@@ -82,6 +244,13 @@ body {
   gap: 0;
   overflow: hidden;
   min-height: 0;
+  align-items: stretch;
+  /* Ensure the center area and side panel exactly fill the remaining viewport height */
+  height: calc(100vh - var(--header-height));
+  margin-top: 0.5rem;
+  /* keep horizontal padding only on the center area to avoid creating a gap on the right edge */
+  padding-left: var(--gutter);
+  padding-right: 0;
 }
 
 .center-dashboard {
@@ -92,6 +261,11 @@ body {
   position: relative;
   min-width: 0;
   min-height: 0;
+  /* Constrain center area to available width after right panel */
+  /* subtract right panel width and left gutter only so the right panel sits flush to the viewport edge */
+  max-width: calc(100vw - var(--right-panel-width) - var(--gutter));
+  margin-right: 0;
+  max-height: 100%;
 }
 
 .car-dashboard-wrapper {
@@ -105,9 +279,104 @@ body {
   border-radius: 8px;
   box-shadow: inset 0 12px 40px rgba(0,0,0,0.75), 0 8px 28px rgba(0,0,0,0.6);
   position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: stretch;
   padding: 0;
-  aspect-ratio: unset;
+  aspect-ratio: 16/9;
   overflow: hidden;
+}
+
+/* Right panel sizing: fixed width that doesn't cause overflow. On small screens it stacks below */
+.right-panel {
+  width: var(--right-panel-width);
+  max-width: 100vw;
+  min-width: 240px;
+  flex: 0 1 var(--right-panel-width);
+  box-sizing: border-box;
+  margin-left: 0;
+  margin-right: 0;
+  align-self: stretch;
+  display: grid;
+  /* keep single-source grid-template-rows (alerts | service-card | control-environment | control-items | footer)
+     other definitions later in the file will ensure explicit ordering */
+  grid-template-rows: auto auto auto 1fr auto;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden; /* inner areas manage their own scrolling */
+  position: relative;
+  transition: width 0.3s cubic-bezier(.22,.9,.27,1), max-width 0.3s cubic-bezier(.22,.9,.27,1);
+}
+
+/* Control icon sizing: centralized, scalable using --rp-base */
+.control-icon {
+  --ci-size: calc(var(--rp-base, 14px) * 2.0);
+  width: var(--ci-size);
+  height: var(--ci-size);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.control-icon svg,
+.control-icon .control-svg {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100%;
+  max-height: 100%;
+  display: block;
+}
+.control-icon img.control-svg {
+  object-fit: contain;
+}
+
+/* Authoritative right-panel scaling: make sure all textual elements scale with --rp-base
+   This final block is intentionally placed late in the file so it overrides earlier absolute sizes. */
+.right-panel {
+  /* increase the effective font-size used by children when available */
+  font-size: calc(var(--rp-base) * 1.22) !important;
+}
+.right-panel h3, .right-panel h4, .right-panel .service-card-title, .right-panel .control-name, .right-panel .control-status, .right-panel .alert-message, .right-panel .alert-item {
+  /* scale headings and common text elements using the rp tokens */
+  font-size: clamp(calc(var(--rp-base) * 1.0), 0.9rem + 0.8vw, calc(var(--rp-xlarge) * 1.1)) !important;
+}
+.right-panel .control-name { font-size: clamp(calc(var(--rp-large) * 0.98), 0.95rem + 0.6vw, calc(var(--rp-xlarge) * 1.08)) !important; }
+.right-panel .control-status { font-size: clamp(calc(var(--rp-small) * 0.98), 0.8rem + 0.5vw, calc(var(--rp-large) * 0.98)) !important; }
+.right-panel .alert-panel h3 { font-size: clamp(calc(var(--rp-xlarge) * 1), 0.95rem + 0.6vw, calc(var(--rp-xlarge) * 1.2)) !important; }
+
+/* Ensure any remaining pixel-based font-size inside the right-panel is overridden to follow --rp-base */
+.right-panel * {
+  /* only override font-size if the element hasn't set it using rp tokens already */
+  font-size: inherit !important;
+}
+
+/* Make sure images and inline svgs inside right-panel scale with rp-base */
+.right-panel img.control-svg, .right-panel svg, .right-panel .control-icon svg, .right-panel .service-item-icon svg {
+  width: calc(var(--rp-base) * 2.4) !important;
+  height: calc(var(--rp-base) * 1.9) !important;
+}
+
+/* Responsive: on small screens stack the right panel under the center and allow full width */
+@media (max-width: 860px) {
+  :root { --right-panel-width: 100%; }
+  .main-dashboard { flex-direction: column; height: auto; }
+  .center-dashboard { max-width: 100vw; height: auto; }
+  .right-panel {
+    width: 100%;
+    min-width: 0;
+    max-width: 100vw;
+    height: auto;
+    margin-top: 1rem;
+    border-radius: 12px;
+    box-shadow: var(--shadow-lg);
+    align-self: stretch;
+    transition: width 0.3s cubic-bezier(.22,.9,.27,1), max-width 0.3s cubic-bezier(.22,.9,.27,1);
+  }
+}
+
+/* Small tweak for very short viewports: limit header height and make main-dashboard scroller */
+@media (max-height: 520px) {
+  :root { --header-height: 40px; }
+  .main-dashboard { height: calc(100vh - var(--header-height)); overflow: auto; }
 }
 
 /* subtle radial fade that blends the wrapper edge to the page background */
@@ -143,6 +412,20 @@ body {
 
 /* ensure wrapper content sits above the blend layer */
 .car-dashboard-wrapper > * { position: relative; z-index: 1; }
+.main-last-updated {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 0.18rem 0.8rem 0.18rem 1.2rem;
+  font-size: clamp(0.72rem, 0.8vw + 0.6rem, 1.08rem);
+  color: #bfbfbf;
+  background: linear-gradient(90deg, rgba(0,0,0,0.82), rgba(0,0,0,0.92));
+  border-top: 1px solid rgba(255,255,255,0.04);
+  text-align: right;
+  z-index: 3;
+  pointer-events: none;
+}
 
 /* Decorative start icon anchored inside the dashboard wrapper */
 .car-dashboard-wrapper { position: relative; }
@@ -184,6 +467,24 @@ body {
   transition-duration: var(--anim-fast);
   outline: none;
   box-shadow: none;
+}
+
+/* Partial dim overlay that leaves a transparent hole for the engine start area */
+.partial-dim-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2; /* above SVG content but below interactive overlay button */
+  pointer-events: none; /* visual-only */
+}
+
+/* Optional overlay button placed over the engine hole when an HTML button is needed */
+.engine-overlay-button {
+  border: none;
+  background: transparent;
+  position: absolute;
+  z-index: 3; /* above partial dim so clicks hit this element */
+  cursor: pointer;
+  pointer-events: auto;
 }
 
 .car-dashboard-wrapper[data-rp-base] .dashboard-start-button { transform: scale(calc(var(--rp-base, 1) / 18)); }
@@ -251,18 +552,32 @@ text.percent-dynamic-value,
 }
 
 .fuel-gauge-risk { top: 25%; left: 10%; }
-.service-card { margin: 12px 8px; padding: 8px; border-radius: 8px; background: linear-gradient(90deg, rgba(0,191,255,0.08), rgba(0,191,255,0.12)); border: 1px solid rgba(0,191,255,0.18); cursor: pointer; }
-.service-card-inner { display:flex; align-items:center; justify-content:space-between; gap:10px; }
-.service-card-title { color: #dfeff6; font-weight:600; }
-.service-card-action { color: #00bfff; font-weight:700; text-align:right; }
+.service-card { margin: 2px 4px; padding: 2px 4px; border-radius: 8px; background: linear-gradient(90deg, rgba(0,191,255,0.06), rgba(0,191,255,0.1)); border: 1px solid rgba(0,191,255,0.14); cursor: pointer; }
+.service-card-inner { display:flex; align-items:center; justify-content:space-between; gap:6px; }
+.service-card-title {
+  color: #dfeff6;
+  font-weight: 600;
+  /* make the Service Card title responsive and larger */
+  font-size: clamp(calc(var(--rp-large) * 1.02), 1rem + 0.6vw, calc(var(--rp-xlarge) * 1.28));
+}
+.service-card-action { color: #00bfff; font-weight:700; text-align:right; font-size: calc(var(--rp-small) * 0.98); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 0 8px rgba(0,191,255,0.9); padding: 1px 4px; }
 .service-card:focus { outline: 3px solid rgba(0,191,255,0.12); outline-offset: 2px; }
 .service-card:active { transform: translateY(1px); }
 .service-card-action:focus { outline: none; }
 
+/* Utility class to forcibly stop the blinking animation (used when the service card is open) */
+
+/* Keep the service-card-action width stable to prevent jumping when the text changes */
+.service-card-action {
+  display: inline-block;
+  min-width: 14ch; /* reserve width for the longer 'Open Service Card Status' text */
+  padding: 4px 8px;
+}
+.service-card-action.service-card-return { cursor: pointer; }
+
 /* blinking neon-blue action text */
 .service-card-action.blinking {
   animation: service-neon-blink 1s infinite;
-  text-shadow: 0 0 8px rgba(0,191,255,0.9), 0 0 16px rgba(0,191,255,0.6);
 }
 @keyframes service-neon-blink {
   0% { opacity: 1; }
@@ -306,6 +621,8 @@ text.percent-dynamic-value,
   font-size: 0.95rem;
 }
 
+/* Login removed: styles intentionally deleted to reduce unused CSS */
+
 /* Service card standalone page and clean back-face styling */
 .service-card-page { padding: 1rem; color: var(--text-primary); background: linear-gradient(180deg, rgba(18,4,6,0.98), rgba(18,4,6,0.96)); min-height: 100vh; }
 .service-card-front h2 { font-size: 1.25rem; margin-bottom: 0.5rem; }
@@ -314,6 +631,8 @@ text.percent-dynamic-value,
 .service-card-details .service-desc { color:#cfcfcf; font-size:0.92rem; margin-top:0.08rem; }
 
 /* Clean page area for user content */
+
+.control-item.clickable { cursor: pointer; }
 .clean-page .clean-container { min-height: 320px; border: 1px dashed rgba(255,255,255,0.06); padding: 16px; border-radius: 8px; background: rgba(255,255,255,0.01); }
 
 /* Modal-like overlay used when opening the service card from index.html */
@@ -340,7 +659,7 @@ text.percent-dynamic-value,
 
 .financial-display {
   position: absolute;
-  top: 0.5rem;
+.status-light { display: inline-block; width: calc(var(--rp-base) * 1.6); height: calc(var(--rp-base) * 1.6); min-width: 10px; min-height: 10px; border-radius: 50%; background: rgba(255,255,255,0.06); box-shadow: 0 0 6px rgba(0,0,0,0.4); flex: 0 0 auto; }
   left: 0.5rem;
   display: grid;
   grid-template-columns: repeat(2, auto);
@@ -406,6 +725,48 @@ text.percent-dynamic-value,
   opacity: 1;
 }
 
+/* Right-panel control-item status indicators (small circular lamp) */
+.control-item .status-indicator {
+  /* default indicator: driven by right-panel tokens so it scales with --rp-base */
+  width: calc(var(--rp-token-base) * 0.9);
+  height: calc(var(--rp-token-base) * 0.9);
+  min-width: calc(var(--rp-token-base) * 0.55);
+  min-height: calc(var(--rp-token-base) * 0.55);
+  border-radius: 50%;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(0,0,0,0.25);
+  box-shadow: none;
+  transition: width 180ms var(--anim-ease), height 180ms var(--anim-ease), box-shadow 220ms var(--anim-ease), transform 180ms var(--anim-ease);
+}
+.control-item[data-status="at-target"] .status-indicator {
+  background: var(--status-green);
+  border-color: rgba(0,230,118,0.25);
+  box-shadow: var(--glow-green);
+}
+.control-item[data-status="at-trigger"] .status-indicator {
+  background: var(--status-amber);
+  border-color: rgba(255,171,0,0.28);
+  box-shadow: var(--glow-amber);
+}
+.control-item.status-forced-off .status-indicator {
+  /* forced-off => visually greyed-out (dim) */
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(0,0,0,0.18);
+  box-shadow: none;
+  opacity: 0.55;
+}
+.control-item[data-status="at-risk"] .status-indicator {
+  background: var(--status-red);
+  border-color: rgba(228,0,43,0.32);
+  box-shadow: var(--glow-red);
+  animation: blink-alert 1.4s infinite;
+}
+
+/* Ensure forced-off styling is visible even when body.powered-off dims other areas */
+body.powered-off .control-item.status-forced-off .status-indicator {
+  opacity: 1 !important;
+}
+
 /* SVG embedded engine start/stop image styling */
 #car-dashboard-svg svg #engine-start-stop {
   cursor: pointer;
@@ -417,6 +778,35 @@ text.percent-dynamic-value,
 #car-dashboard-svg svg #engine-start-stop.engine-active {
   filter: drop-shadow(0 0 12px rgba(0,220,120,0.95));
 }
+
+/* Never dim the SVG engine start/stop image, even when powered-off */
+body.powered-off #car-dashboard-svg svg #engine-start-stop {
+  opacity: 1 !important;
+  filter: none !important;
+  pointer-events: auto !important;
+  visibility: visible !important;
+}
+
+/* Keep the HTML start button visible and interactive when powered-off
+   The powered-off visual overlay sits at z-index:2 (injected). We give the
+   dashboard start button a positioned stacking context and a higher z-index
+   so it remains above the overlay and is not visually dimmed.
+*/
+body.powered-off .dashboard-start-button,
+body.powered-off #engine-start-btn {
+  position: relative; /* enable z-index */
+  z-index: 5 !important; /* above .powered-off-overlay (z-index:2) and the SVG image */
+  pointer-events: auto !important;
+  cursor: pointer !important;
+  opacity: 1 !important;
+  filter: none !important;
+  transform: none !important;
+}
+
+/* HTML overlay that mirrors the SVG engine image so it can remain above the
+   powered-off overlay and not be visually dimmed. Positioned absolutely within
+   .car-dashboard-wrapper and sized to match the SVG image bounding box. */
+/* no overlay; prefer to keep the original SVG and HTML start button visible */
 
 @keyframes pulse-indicator {
   0%, 100% { transform: scale(1); }
@@ -448,33 +838,74 @@ text.percent-dynamic-value,
   box-shadow: var(--glow-green);
 }
 
-/* Right Panel */
+/* Right Panel: layout anchored to the footer so the middle area (control-items)
+   expands to exactly the space above the footer. This makes the footer a fixed
+   guiding point and allows the control list to proportionally fill available
+   vertical space on every screen size. */
 .right-panel {
-  /* fit the panel width to its contents so headings don't leave trailing space */
-  width: max-content;
+  width: var(--right-panel-width);
   min-width: 240px; /* safe minimum to avoid collapsing on tiny screens */
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-  gap: 0.4rem;
   background: #18191c !important;
   border: 1px solid var(--border-color);
   border-radius: 12px;
   box-shadow: var(--shadow-lg);
-  /* allow the right panel to stretch to the height of its flex row parent */
-  align-self: stretch;
-  height: auto;
-  min-height: 0;
-  max-height: none;
-  overflow: visible; /* avoid forcing internal scrollbars */
+  /* Use grid so we can anchor footer as the final row and fix ordering */
+  display: grid;
+  grid-template-rows: auto auto auto 1fr auto; /* alerts | service-card | control-environment | control-items (fills) | footer */
+  gap: 0.4rem;
+  height: calc(100vh - var(--header-height));
+  min-height: calc(100vh - var(--header-height));
+  max-height: 100vh;
+  overflow: hidden; /* hide outer scrollbar; inner areas scroll instead */
   align-items: stretch;
 }
+
+/* Force a stable ordering inside the right-panel grid so the service-card stays above the heading */
+.right-panel > .alert-panel { grid-row: 1 / 2; }
+.right-panel > .service-card { grid-row: 2 / 3; }
+.right-panel > .control-environment { grid-row: 3 / 4; }
+.right-panel > .control-items { grid-row: 4 / 5; }
+.right-panel > .panel-footer { grid-row: 5 / 6; }
+
+/* The middle area (.control-items) must scroll internally and occupy the
+   remaining space above the footer. Use min-height:0 to allow flex/grid
+   children to shrink properly in many browsers. */
+.control-items {
+  grid-row: 4 / 5; /* ensure it sits in the expandable grid row */
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.16rem;
+  overflow: auto;
+  min-height: 0; /* enable proper shrinking in flex/grid layouts */
+}
+
+/* Make each control-item grow equally to fill the control-items area so the
+   whole block scales proportionally to the available height. Items still
+   respect internal padding and min-content sizing. */
+.control-items > .control-item {
+  flex: 1 1 0%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: calc(var(--rp-base) * 0.9) calc(var(--rp-base) * 0.6);
+  gap: 0.18rem;
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(0,0,0,0.04));
+}
+
+/* When there are many items, allow them to keep a practical min-size */
+.control-items > .control-item { min-height: calc(var(--rp-base) * 3.6); }
+
 
 /* Right-panel typography scale variables and intelligent sizing */
 .right-panel {
   /* base size adapts to viewport width but stays within readable bounds */
   /* further reduced scale to fit the page and match requested hierarchy */
-  --rp-base: clamp(0.58rem, 0.6rem + 0.18vw, 0.7rem);
+  /* stronger base so right-panel typography/icons are larger by default */
+  /* calibrated base so right-panel typography/icons are comfortable, not oversized */
+  /* slightly reduced from the last bump so the right-panel is a bit smaller */
+  --rp-base: clamp(0.70rem, 0.80rem + 0.17vw, 0.98rem);
   --rp-small: calc(var(--rp-base) * 0.92);
   --rp-large: calc(var(--rp-base) * 1.02);
   --rp-xlarge: calc(var(--rp-base) * 1.14);
@@ -489,7 +920,22 @@ text.percent-dynamic-value,
 .right-panel .alert-critical { font-size: var(--rp-base); padding: 0.12rem; }
 .right-panel .alert-item { font-size: var(--rp-base); padding: 0.1rem; }
 
-.right-panel .control-environment h4 { font-size: calc(var(--rp-xlarge) * 0.98); color: var(--text-primary); font-weight:700; margin-bottom:0.12rem; }
+.right-panel .control-environment h4 {
+  /* responsive heading: scales with rp tokens and viewport width */
+  font-size: clamp(calc(var(--rp-xlarge) * 0.70), calc(var(--rp-base) * 0.88) + 0.16vw, calc(var(--rp-xlarge) * 0.92));
+  color: var(--text-primary);
+  font-weight: 700;
+  margin-bottom: 0.12rem;
+}
+
+/* Slightly larger compact heading for MANAGEMENT CONTROL APPROACH STATUS */
+.control-environment.compact h4 {
+  /* compact heading scales responsively but slightly smaller than regular */
+  font-size: clamp(calc(var(--rp-large) * 0.66), calc(var(--rp-base) * 0.84) + 0.14vw, calc(var(--rp-xlarge) * 0.90)) !important;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 0.08rem 0;
+}
 
 /* Make the Control Environment header container fit its content and opt out of flex resizing
    so the element keeps a stable width and does not auto-adjust when the viewport changes. */
@@ -505,21 +951,44 @@ text.percent-dynamic-value,
   white-space: nowrap;       /* avoid internal wrapping which would change width */
   overflow: visible;         /* prevent clipping */
 }
+.control-environment,
+.control-environment.compact {
+  background: linear-gradient(90deg, rgba(0,191,255,0.04), rgba(0,0,0,0.06));
+  border: 1px solid rgba(0,191,255,0.12);
+  padding: 0.32rem 0.6rem;
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.6), 0 0 10px rgba(0,191,255,0.04) inset;
+  display: inline-block;
+  width: auto;
+  margin: 0.18rem 0 0.24rem 0;
+}
+.control-environment.compact { padding-left: calc(var(--gutter) * 0.8); }
+
+/* Ensure other control svgs follow the base scaling too */
+.control-svg, .control-icon svg { width: calc(var(--rp-base) * 2.9) !important; height: calc(var(--rp-base) * 2.45) !important; }
 .right-panel .control-item { font-size: var(--rp-base); padding: 0.08rem 0.12rem; }
 .right-panel .control-header { gap: 0.08rem; }
-.right-panel .control-icon { font-size: 0.5rem; min-width: 16px; padding: 0.04rem 0.08rem; }
+.right-panel .control-icon { font-size: calc(var(--rp-base) * 1); min-width: calc(var(--rp-base) * 2.4); padding: calc(var(--rp-base) * 0.22) calc(var(--rp-base) * 0.36); display:flex; align-items:center; justify-content:center; }
 .right-panel .control-name { font-size: calc(var(--rp-large) * 0.98); color: var(--text-primary); font-weight:600; }
 .right-panel .control-status { font-size: calc(var(--rp-small) * 0.96); color: #bfbfbf; }
+.right-panel .control-name:hover, .right-panel .control-status:hover { text-decoration: none; cursor: pointer; }
+
+/* Align Control Processes status to the left (default) */
+#abs-control .control-status {
+  justify-content: flex-start; /* push text and status-light to the left */
+  text-align: left;
+}
 
 .right-panel .service-panel .service-panel-content { padding: 0.22rem; }
 .right-panel .service-list li { padding: 0.22rem 0.28rem; gap: 0.28rem; }
 .right-panel .service-item-label { font-size: calc(var(--rp-base) * 1.18); color: #cfcfcf; font-weight: 600; }
-.right-panel .service-item-icon { min-width: 16px; font-size: 12px; }
-.right-panel .service-item-icon svg { width: 14px; height: 14px; }
+.right-panel .service-item-icon { min-width: calc(var(--rp-base) * 2.2); font-size: calc(var(--rp-base) * 0.98); }
+.right-panel .service-item-icon svg { width: calc(var(--rp-base) * 1.85); height: calc(var(--rp-base) * 1.85); }
 
 /* Slightly reduce the scale on very small screens to prevent overflow */
 @media (max-width: 420px) {
-  .right-panel { --rp-base: clamp(0.64rem, 0.66rem + 0.2vw, 0.75rem); }
+  /* On very small screens, keep it slightly smaller but still readable */
+  .right-panel { --rp-base: clamp(0.6rem, 0.66rem + 0.14vw, 0.8rem); }
   .right-panel .control-icon { min-width: 16px; }
   .right-panel .service-list li { padding: 0.22rem 0.26rem; }
 }
@@ -571,14 +1040,65 @@ text.percent-dynamic-value,
   background: rgba(255, 171, 0, 0.06);
   border-color: var(--status-amber);
 }
+
+/* Map status colours from the control-item's data-status attribute */
+.control-item[data-status="at-target"] .status-light { background: var(--status-green); box-shadow: var(--glow-green); }
+.control-item[data-status="at-trigger"] .status-light { background: var(--status-amber); box-shadow: var(--glow-amber); }
+.control-item[data-status="at-risk"] .status-light { background: var(--status-red); box-shadow: var(--glow-red); }
+
+/* Add accessible focus outline when control-item is focused/clickable */
+.control-item:focus-within .status-light, .control-item:hover .status-light { transform: scale(1.08); transition: transform var(--anim-fast) var(--anim-ease); }
 .alert-item[data-status="at-risk"] {
   background: rgba(228, 0, 43, 0.06);
   border-color: var(--status-red);
 }
 
+/* Small outcome dot placed next to outcome values in inline detail panels */
+.outcome-dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:8px; vertical-align:middle; box-shadow: 0 0 6px rgba(0,0,0,0.35); }
+.overall-outcome-dot { width: 14px !important; height: 14px !important; border-radius: 50% !important; box-shadow: 0 0 10px rgba(0,0,0,0.45) !important; margin-right: 10px !important; }
+.outcome-green { background: var(--status-green); box-shadow: var(--glow-green); }
+.outcome-amber { background: var(--status-amber); box-shadow: var(--glow-amber); }
+.outcome-red { background: var(--status-red); box-shadow: var(--glow-red); }
+
+/* Right-align the Overall Outcome value and give it stronger emphasis */
+.overall-outcome-value {
+  text-align: right !important;
+  font-weight: 800;
+  color: #ffffff !important;
+}
+
 .alert-item.blinking {
   animation: blink-alert 1.2s infinite;
 }
+
+/* Panel footer pinned to the bottom grid row of the right-panel */
+.panel-footer {
+  grid-row: 5 / 6;
+  padding: calc(var(--rp-base) * 0.8) calc(var(--rp-base) * 1.0);
+  border-top: 1px solid rgba(255,255,255,0.03);
+  text-align: right;
+  font-size: calc(var(--rp-small) * 0.98);
+  background: linear-gradient(180deg, transparent, rgba(0,0,0,0.04));
+  /* expose a footer height variable so other panel content can adapt */
+  --rp-footer-height: calc((var(--rp-base) * 0.8) * 2.4); /* approximate total footer height */
+}
+
+/* Make the Last Updated text less prominent */
+.panel-footer .update-time {
+  /* Increase the datetime size for better legibility; scale with rp tokens */
+  font-size: clamp(0.74rem, calc(var(--rp-small) * 0.95), 0.96rem);
+  color: rgba(255,255,255,0.82);
+  font-weight: 500;
+  opacity: 0.98;
+}
+.panel-footer .update-time #last-updated {
+  font-weight: 700;
+  color: rgba(255,255,255,0.92);
+  font-size: calc(var(--rp-small) * 1.02);
+}
+
+/* Slightly reduce the main dashboard's last-updated block to match */
+.main-last-updated { font-size: clamp(0.58rem, calc(var(--rp-small) * 0.66), 0.72rem); color: rgba(191,191,191,0.72); }
 
 .alert-list {
   display: flex;
@@ -611,7 +1131,7 @@ text.percent-dynamic-value,
   background: #18191c !important;
   border: 1px solid var(--border-color);
   border-radius: 6px;
-  padding: 0.18rem;
+  padding: 0.04rem;
   flex: 1 1 auto; /* expand to fill remaining vertical space */
   min-height: 0; /* allow flex child to shrink properly */
   height: auto;
@@ -642,12 +1162,25 @@ text.percent-dynamic-value,
 .control-items {
   display: flex;
   flex-direction: column;
-  gap: 0.18rem;
+  gap: 0.04rem;
   background: #000 !important;
   border-radius: 6px;
   padding: 0.18rem;
   box-shadow: var(--shadow-sm);
+  flex-grow: 1;
 }
+
+/* Compact modifier used where spacing must be minimized */
+.control-environment.compact { padding: 0.02rem; border-width: 0; padding-left: calc(var(--gutter) * 1.2); padding-right: calc(var(--gutter) * 0.6); }
+.control-environment.compact h4 {
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text-primary); /* keep white font as requested */
+  font-size: calc(var(--rp-xlarge) * 0.98);
+  margin: 0.06rem 0 0.12rem 0;
+}
+.control-item { padding-top: 0.04rem; padding-bottom: 0.04rem; }
 
 /* 3D flip: front = the list of control-items, back = the in-panel service-panel */
 .control-environment {
@@ -720,8 +1253,9 @@ text.percent-dynamic-value,
   position: absolute;
   left: 0;
   right: 0;
-  /* place panel just below the header; let its height be determined by content */
-  top: 2rem;
+  /* anchor the service panel so its bottom stays above the footer */
+  top: 2rem; /* start below the heading */
+  bottom: calc(var(--rp-footer-height, 56px) + 0.5rem);
   padding: 0.25rem 0.18rem;
   background: transparent; /* panel content handles its own background */
   /* slightly forward in Z so the back face reads as a distinct surface during the flip */
@@ -748,8 +1282,9 @@ text.percent-dynamic-value,
 }
 
 .service-panel .service-panel-content {
-  height: auto; /* let content determine height */
-  max-height: calc(60vh); /* avoid growing beyond a comfortable viewport height */
+  height: auto; /* let content determine height within available space */
+  /* limit to the space between the heading and the footer so the footer remains visible */
+  max-height: calc(100vh - var(--header-height) - var(--rp-footer-height, 56px) - 4rem);
   overflow: auto;
   background: var(--bg-card);
   border-radius: 6px;
@@ -778,7 +1313,21 @@ text.percent-dynamic-value,
 /* Cleaned service-card details block */
 .service-card-details { padding: 0.25rem 0.35rem; }
 .service-card-details .service-card-details-inner { padding: 0.25rem; }
-.service-card-details .service-panel-title { color: #dfeff6; font-weight: 700; margin-bottom: 0.35rem; font-size: 0.95rem; }
+.service-card-details .service-panel-title {
+  color: #dfeff6;
+  font-weight: 700;
+  margin-bottom: 0.35rem;
+  /* Responsive heading: scales between a comfortable min and max, tied to the right-panel base size */
+  font-size: clamp(
+    calc(var(--rp-large) * 0.95), /* at small sizes use slightly smaller baseline */
+    calc(1.05rem + 0.6vw),         /* preferred scaling with viewport */
+    calc(var(--rp-xlarge) * 1.2)   /* upper-bound based on rp-xlarge token */
+  );
+  line-height: 1.05;
+}
+.service-panel .service-list li, .service-panel .service-item-label, .service-panel .service-desc {
+  font-size: calc(var(--rp-base) * 0.98);
+}
 .service-card-details .service-list li { background: transparent; padding: 0.2rem 0; }
 
 /* Independent right-side service card pane shown after flip */
@@ -833,10 +1382,23 @@ text.percent-dynamic-value,
 }
 
 .service-item-icon svg {
-  width: 18px;
-  height: 18px;
+  width: calc(var(--rp-base) * 1.85);
+  height: calc(var(--rp-base) * 1.85);
   display: block;
   fill: currentColor;
+}
+
+/* Ensure author-supplied inline SVGs and <img.control-svg> scale with the right-panel base size */
+.control-svg, .control-icon svg, .control-item .control-svg {
+  width: calc(var(--rp-base) * 2.9) !important;
+  height: calc(var(--rp-base) * 2.45) !important;
+  max-width: 100% !important;
+  display: inline-block !important;
+}
+.control-item .control-svg[width], .control-item .control-svg[height] {
+  /* override any hardcoded width/height attributes visually while preserving the attributes for accessibility */
+  width: auto !important;
+  height: auto !important;
 }
 
 .service-item-icon.ok {
@@ -896,6 +1458,21 @@ text.percent-dynamic-value,
   position: relative;
 }
 
+/* When a control is opened, enlarge its main status indicator */
+.control-item.control-open .status-indicator,
+.control-item.control-open .status-light {
+  /* opened state: larger than default, driven by tokens for responsive scaling */
+  width: calc(var(--rp-token-base) * 1.45) !important;
+  height: calc(var(--rp-token-base) * 1.45) !important;
+  border-radius: 50% !important;
+}
+
+/* Make the opened inline panel have a fully black background to match request */
+.control-inline-detail {
+  background: #000 !important;
+  border-color: rgba(255,255,255,0.04) !important;
+}
+
 /* When flipped to show service card details, remove rectangular containers for a cleaner page */
 .control-environment.flipped .control-item,
 .control-environment.flipped .service-panel .service-panel-content,
@@ -908,6 +1485,51 @@ text.percent-dynamic-value,
 .control-environment.flipped .service-list li {
   padding: 0.15rem 0.25rem;
 }
+
+/* Right-panel responsive token overrides --------------------------------------------------
+   Derive additional size tokens from --rp-base (set by JS) and apply them to common elements
+   so the entire right-pane scales proportionally with the screen size. This keeps the
+   title-scaling behavior consistent across other controls, icons, paddings and the close button.
+-----------------------------------------------------------------------------------------*/
+.right-panel {
+  /* derive a consistent set of tokens (values are in px because --rp-base is a px string) */
+  --rp-token-small: calc(var(--rp-base) * 0.6);
+  --rp-token-base: calc(var(--rp-base) * 1.0);
+  --rp-token-large: calc(var(--rp-base) * 1.35);
+  --rp-token-xlarge: calc(var(--rp-base) * 1.8);
+  /* ensure font-size follows rp-base so child elements scale when they inherit */
+  font-size: var(--rp-token-base) !important;
+}
+
+/* icons, badges and indicators scale with the rp tokens */
+.right-panel .control-icon { width: calc(var(--rp-token-base) * 2.0) !important; height: calc(var(--rp-token-base) * 2.0) !important; }
+.right-panel .control-icon svg, .right-panel img.control-svg { width: 100% !important; height: 100% !important; }
+.right-panel .status-indicator { width: calc(var(--rp-token-base) * 1.25) !important; height: calc(var(--rp-token-base) * 1.25) !important; }
+
+/* scale control name/status text to match rp tokens (these will override earlier clamped rules) */
+.right-panel .control-name { font-size: calc(var(--rp-token-base) * 0.95) !important; }
+.right-panel .control-status { font-size: calc(var(--rp-token-base) * 0.78) !important; }
+
+/* make control-item padding scale proportionally */
+.right-panel .control-item { padding: calc(var(--rp-token-base) * 0.06) !important; }
+
+/* service-card sizing */
+.right-panel .service-card { padding: calc(var(--rp-token-base) * 0.14) !important; }
+
+/* overlay close button scaled to the token values so it stays in the corner on all sizes */
+.right-panel .control-inline-detail.overlay .overlay-close {
+  top: calc(var(--rp-token-base) * 0.08) !important;
+  right: calc(var(--rp-token-base) * 0.08) !important;
+  padding: calc(var(--rp-token-base) * 0.04) calc(var(--rp-token-base) * 0.08) !important;
+  font-size: calc(var(--rp-token-base) * 0.055) !important;
+}
+
+/* footer and small controls */
+.right-panel .panel-footer { padding: calc(var(--rp-token-base) * 0.08) !important; font-size: calc(var(--rp-token-base) * 0.62) !important; }
+
+/* ensure overlays use the token-derived width/left offsets (keeps consistent padding) */
+.right-panel .control-inline-detail.overlay { left: calc(var(--rp-token-base) * 0.75) !important; right: calc(var(--rp-token-base) * 0.75) !important; }
+
 
 .control-header {
   display: flex;
@@ -943,9 +1565,9 @@ text.percent-dynamic-value,
 
 /* Blinking action label for the service card (subtle pulse) */
 @keyframes sd-blink {
-  0% { opacity: 1; transform: translateY(0); }
-  50% { opacity: 0.45; transform: translateY(-1px); }
-  100% { opacity: 1; transform: translateY(0); }
+  0% { opacity: 1; }
+  50% { opacity: 0.45; }
+  100% { opacity: 1; }
 }
 
 .service-card-action.blinking {
@@ -999,6 +1621,8 @@ text.percent-dynamic-value,
 .service-panel .service-panel-content {
   background: var(--bg-card);
   color: var(--text-primary);
+  max-height: calc(100vh - var(--header-height) - var(--rp-footer-height, 56px) - 4rem);
+  overflow: auto;
 }
 .service-list li {
   color: var(--text-primary) !important;
@@ -1008,6 +1632,8 @@ text.percent-dynamic-value,
 /* Make sure the service panel content has enough height to display all items */
 .service-panel .service-panel-content {
   min-height: 200px; /* visible area for checklist */
+  max-height: calc(100vh - var(--header-height) - var(--rp-footer-height, 56px) - 4rem);
+  overflow: auto;
 }
 .service-text {
   color: var(--text-primary) !important;
@@ -1084,15 +1710,7 @@ text.percent-dynamic-value,
   100% { opacity: 1; filter: drop-shadow(0 0 8px currentColor); }
 }
 
-/* Footer */
-.panel-footer {
-  text-align: center;
-  font-size: 0.6rem;
-  color: var(--text-secondary);
-  padding: 0.5rem;
-  background: #000 !important;
-  border-radius: 6px;
-}
+/* Footer visuals are defined earlier and anchored via grid-row for the right-panel */
 
 /* Warning light base */
 .warning-light {
@@ -1135,16 +1753,16 @@ text.percent-dynamic-value,
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
+  gap: calc(var(--rp-base) * 0.6);
 }
 .service-card-blank-items li {
-  font-size: 1.02rem; /* slightly larger */
+  font-size: calc(var(--rp-large) * 1.02); /* responsive size */
   font-weight: 700;
   color: var(--text-primary);
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.18rem 0.12rem;
+  gap: calc(var(--rp-base) * 0.8);
+  padding: calc(var(--rp-base) * 0.6) calc(var(--rp-base) * 0.4);
   border-bottom: 1px solid rgba(255,255,255,0.04);
 }
 .service-card-blank-items li:last-child { border-bottom: none; }
@@ -1153,18 +1771,18 @@ text.percent-dynamic-value,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: calc(var(--rp-base) * 2.6);
+  height: calc(var(--rp-base) * 2.6);
   border-radius: 50%;
   background: linear-gradient(180deg, rgba(0,220,120,0.12), rgba(0,220,120,0.06));
   color: var(--status-green);
-  font-size: 0.9rem;
+  font-size: calc(var(--rp-base) * 0.95);
   box-shadow: 0 2px 8px rgba(0,220,120,0.08);
 }
 
 @media (max-width: 420px) {
-  .service-card-blank-items li { font-size: 0.95rem; gap: 0.45rem; }
-  .service-card-blank-items li::before { width: 18px; height: 18px; font-size: 0.82rem; }
+  .service-card-blank-items li { font-size: calc(var(--rp-large) * 0.95); gap: calc(var(--rp-base) * 0.6); }
+  .service-card-blank-items li::before { width: calc(var(--rp-base) * 2.2); height: calc(var(--rp-base) * 2.2); font-size: calc(var(--rp-base) * 0.82); }
 }
 
 /* Service panel return button: hide visually when aria-hidden=true, show when false */
@@ -1191,3 +1809,63 @@ text.percent-dynamic-value,
 
 /* Make sure the return container sits above footer and is visually distinct */
 .service-panel-actions.service-panel-actions-bottom { margin-top: 0.35rem; }
+/* bottom fixed test slider bar */
+.bottom-test-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(4px);
+  z-index: 10000;
+}
+.bottom-test-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 8px 12px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  color: #ccc;
+  font-size: 12px;
+}
+.bottom-test-inner input[type=range] {
+  flex: 1;
+}
+.bottom-test-inner label {
+  white-space: nowrap;
+}
+.bottom-test-inner span {
+  display: inline-block;
+  width: 40px;
+  text-align: right;
+}
+
+/* Keep the dashboard Start button visible and clickable while powered-off */
+body.powered-off .dashboard-start-button {
+  pointer-events: auto !important;
+  opacity: 1 !important;
+  z-index: 99999; /* ensure it's above any powered-off overlay */
+}
+
+/* Prevent automatic browser zooming / text size adjustments on refresh or orientation change.
+   This helps stop mobile browsers (and some desktop engines) from auto-scaling the page
+   when the viewport or content size changes. Keep these near the top so they are applied
+   before other rules. */
+html, body {
+  /* disable author/UA zooming transforms */
+  -webkit-text-size-adjust: 100%; /* iOS Safari */
+  -ms-text-size-adjust: 100%; /* IE Mobile */
+  text-size-adjust: 100%; /* Modern browsers */
+  -webkit-user-select: text; /* Safari/old WebKit */
+  -moz-user-select: text;    /* Firefox */
+  -ms-user-select: text;     /* IE10+ */
+  user-select: text;         /* Standard */
+}
+
+/* Ensure root elements do not receive unexpected transforms or zooms */
+html, body, .dashboard-container {
+  transform: none !important;
+  zoom: 1 !important; /* neutralize any zoom property if injected */
+}

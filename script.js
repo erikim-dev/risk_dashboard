@@ -1,3 +1,53 @@
+// Remove any legacy overlay elements on page load to guarantee no duplicates
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.engine-start-overlay, .engine-overlay-button, .partial-dim-overlay, .powered-off-overlay, .powered-off-start-button').forEach(el => el.remove());
+    // On load, ensure the small '#last-updated' element remains available for data-driven updates
+    // and start a separate live clock for the dashboard footer '#main-last-updated'.
+    var lastUpdated = document.getElementById('last-updated');
+    var mainLastUpdated = document.getElementById('main-last-updated');
+
+    // Start a lightweight live ISO 8601 clock for the main dashboard footer.
+    // This shows the current time (ISO 8601, UTC, without milliseconds) and updates every 30s.
+    if (mainLastUpdated) {
+        const tickMainClock = () => {
+            // Use Intl.DateTimeFormat to get accurate Kenya time (Africa/Nairobi)
+            // Format parts and build YYYY-MM-DD HH:MM
+            try {
+                const fmt = new Intl.DateTimeFormat('en-GB', {
+                    timeZone: 'Africa/Nairobi',
+                    year: 'numeric', month: '2-digit', day: '2-digit',
+                    hour: '2-digit', minute: '2-digit', hour12: false
+                });
+                const parts = fmt.formatToParts(new Date());
+                const map = {};
+                parts.forEach(p => { if (p.type && p.value) map[p.type] = p.value; });
+                const Y = map.year || new Date().getFullYear();
+                const M = map.month || '01';
+                const D = map.day || '01';
+                const h = map.hour || '00';
+                const m = map.minute || '00';
+                mainLastUpdated.textContent = `${Y}-${M}-${D} ${h}:${m}`;
+            } catch (e) {
+                // Fallback to manual UTC+3 calculation if Intl is not available
+                const now = new Date();
+                const kenyaOffsetMinutes = 3 * 60;
+                const kenya = new Date(now.getTime() + (kenyaOffsetMinutes + now.getTimezoneOffset()) * 60000);
+                const pad = (n) => String(n).padStart(2, '0');
+                const Y = kenya.getUTCFullYear();
+                const M = pad(kenya.getUTCMonth() + 1);
+                const D = pad(kenya.getUTCDate());
+                const h = pad(kenya.getUTCHours());
+                const m = pad(kenya.getUTCMinutes());
+                mainLastUpdated.textContent = `${Y}-${M}-${D} ${h}:${m}`;
+            }
+        };
+        tickMainClock();
+        // Refresh every 30 seconds
+        setInterval(tickMainClock, 30 * 1000);
+    }
+
+    // Login overlay removed: no interactive sign-in required for this build
+});
 // Single consolidated RiskDashboard controller
 class RiskDashboard {
     constructor() {
@@ -11,9 +61,9 @@ class RiskDashboard {
     this._serviceCardBackups = new WeakMap();
     // Engine start/stop state (default: off)
     this.engineActive = false;
-        // Gauge hub center (per user specification for precise rotation)
-        this.gaugeHubX = 529.32;
-        this.gaugeHubY = 301.94;
+    // Gauge hub center aligned to the artwork's round hub (kept constant)
+    this.gaugeHubX = 535.38;
+    this.gaugeHubY = 307.38;
     // RPM gauge hub (removed - RPM runtime support cleaned)
     // Fuel gauge hub (precise rotation center used by the fuel pointer)
     this.fuelHubX = 712.68;
@@ -55,6 +105,11 @@ class RiskDashboard {
         };
 
         this.init();
+        // Ensure powered-off CSS is injected immediately, then apply power-state visuals
+        try { this._injectPoweredOffNoHoverStyle(); } catch (e) {}
+        // Apply power-state visuals immediately (synchronous) so powered-off view appears
+        // instantly on page load/refresh without waiting for async init to finish.
+        try { this.applyPowerState(); } catch (e) { /* ignore */ }
     }
 
     // Create an empty, blank service card pane matching the flipped element's size
@@ -63,7 +118,7 @@ class RiskDashboard {
             // If already present, do nothing
             if (document.querySelector('.service-card-independent')) return;
 
-            const target = document.querySelector('.control-environment') || document.querySelector('.car-dashboard-wrapper');
+            const target = document.querySelector('.right-panel .control-environment') || document.querySelector('.control-environment') || document.querySelector('.car-dashboard-wrapper');
             if (!target) return;
 
             const rect = target.getBoundingClientRect();
@@ -98,9 +153,9 @@ class RiskDashboard {
             document.body.appendChild(pane);
 
             // reposition on resize
-            const reposition = () => {
+                    const reposition = () => {
                 try {
-                    const r = (document.querySelector('.control-environment') || document.querySelector('.car-dashboard-wrapper')).getBoundingClientRect();
+                    const r = (document.querySelector('.right-panel .control-environment') || document.querySelector('.control-environment') || document.querySelector('.car-dashboard-wrapper')).getBoundingClientRect();
                     pane.style.left = r.left + 'px'; pane.style.top = r.top + 'px'; pane.style.width = r.width + 'px'; pane.style.height = r.height + 'px';
                 } catch (e) {}
             };
@@ -132,6 +187,31 @@ class RiskDashboard {
             // install their preferred partial dim later.
             await this.loadData();
             await this.loadCarDashboardSVG();
+            // Note: keep any embedded `#speed-pointer` in the SVG so we can use the
+            // original artwork. (Previous test flows removed it; end that behavior.)
+            // Ensure the embedded pointer (if present) is visible and on top
+            try {
+                if (this.carDashboardSVG) {
+                    const sp = this.carDashboardSVG.querySelector('#speed-pointer');
+                    if (sp) {
+                        // Move to end of SVG so it renders on top
+                        const parent = sp.parentNode || this.carDashboardSVG;
+                        parent.appendChild(sp);
+                        // Ensure it's not hidden by style
+                        sp.style.display = '';
+                    }
+                }
+            } catch (e) { /* ignore */ }
+            // Safety: ensure CSS cannot introduce transforms on the speed pointer
+            try {
+                if (!document.getElementById('speed-pointer-safety-style')) {
+                    const st = document.createElement('style');
+                    st.id = 'speed-pointer-safety-style';
+                    // Do not override transform; only disable pointer-events and CSS transitions
+                    st.textContent = '#speed-pointer{pointer-events:none!important;transition:none!important;}';
+                    document.head.appendChild(st);
+                }
+            } catch (e) { /* ignore */ }
             // Ensure key SVG numeric labels are white (override inline fills if necessary)
             try {
                 const svg = this.carDashboardSVG;
@@ -148,8 +228,46 @@ class RiskDashboard {
             // Inline dim application removed to allow external/alternate dim rules
             // try { this._applyInlineDim(); } catch (e) { /* ignore */ }
             this.attachFileLoader();
+            try { this.wireControlItemPopups(); } catch (e) { /* ignore */ }
             this.updateDashboard();
-            this.startRealTimeUpdates();
+            // Start a dedicated data watcher that polls the JSON and updates the UI when it changes
+            this.startDataWatcher();
+            // Dev sliders and controls removed from runtime to avoid redundancy.
+            // Previously there were several "speed-test" and "test-speed-slider" bindings here
+            // for interactive development. Those have been intentionally removed so the
+            // dashboard relies on `data/risk-data.json` and the single Start button.
+            // Compute gauge calibration from artwork anchors, snap pointer to zero,
+            // then load external data (but don't animate on load so the pointer
+            // remains resting at zero until interaction).
+            try { this.computeGaugeCalibrationFromRects(); } catch (e) {}
+            try { this.snapPointersToZero(); } catch (e) {}
+            // hide test UI by default (user requested resting pointer with test hidden)
+            try {
+                const dev = document.querySelector('.dev-controls'); if (dev) dev.style.display = 'none';
+            } catch (e) {}
+            try { this.loadRiskData(); } catch (e) {}
+
+            // Wire the simple Start button added to index.html (toggles engine state)
+            try {
+                const startBtn = document.getElementById('engine-start-btn');
+                if (startBtn) {
+                    const updateLabel = () => {
+                        try { startBtn.textContent = this.engineActive ? 'Stop' : 'Start'; } catch (e) {}
+                        try { startBtn.setAttribute('aria-pressed', String(!!this.engineActive)); } catch (e) {}
+                    };
+                    updateLabel();
+                    startBtn.addEventListener('click', (ev) => {
+                        ev && ev.preventDefault && ev.preventDefault();
+                        this.engineActive = !this.engineActive;
+                        updateLabel();
+                        try { this.applyPowerState(); } catch (e) {}
+                    });
+                }
+            } catch (e) { /* non-fatal */ }
+
+            // Ensure the current power state visuals are applied immediately on init
+            try { this.applyPowerState(); } catch (e) { /* ignore */ }
+
             // Pause polling when the page is hidden to reduce CPU/timer noise, and
             // ensure the interval is cleared on unload to avoid leaks during debugging.
             try {
@@ -164,9 +282,6 @@ class RiskDashboard {
                 });
                 window.addEventListener('beforeunload', () => { try { if (this.updateInterval) clearInterval(this.updateInterval); } catch (e) {} });
             } catch (e) { /* non-fatal */ }
-
-            // Apply powered-off default state and disable hover reveals until engine is on
-            try { this._injectPoweredOffNoHoverStyle(); this.applyPowerState(); } catch (e) { /* ignore */ }
         } catch (err) {
             console.error('Initialization failed', err);
             this.data = this.getDefaultData();
@@ -176,22 +291,337 @@ class RiskDashboard {
         }
     }
 
+    // Wire click handlers for control items to show inline drill-down panels
+    wireControlItemPopups() {
+        try {
+            const data = this.data || {};
+            document.querySelectorAll('.control-item').forEach(ci => {
+                ci.classList.add('clickable');
+                // remove any existing inline detail to avoid duplicates
+                const existing = ci.querySelector('.control-inline-detail');
+                if (existing) existing.remove();
+
+                const renderDetail = () => {
+                    // toggle panel/overlay
+                    const rightPanel = document.querySelector('.right-panel') || document.querySelector('.control-items') || document.body;
+                    // if any overlay exists already, don't open another
+                    if (document.querySelector('.control-inline-detail.overlay')) return;
+                    // if this control already has an inline detail, don't duplicate
+                    if (ci.querySelector('.control-inline-detail')) return;
+
+                    const id = ci.id || 'control-' + (ci.dataset?.status || Math.random().toString(36).slice(2,8));
+                    const name = ci.querySelector('.control-name')?.textContent || id;
+
+                    // find record in data.controlDetails or try fallbacks
+                    const normalizedId = id.replace(/[-_\s]+/g, '').toLowerCase();
+                    const normalizedName = name.replace(/[-_\s]+/g, '').toLowerCase();
+                    let record = null;
+                    if (data.controlDetails) record = data.controlDetails[id] || data.controlDetails[normalizedId] || data.controlDetails[normalizedName] || null;
+                    if (!record && data.controls) record = data.controls[id] || data.controls[normalizedId] || data.controls[normalizedName] || null;
+                    // as last resort, synthesize minimal record from controlSystems/svgElementMappings
+                    if (!record && data.controlSystems && data.svgElementMappings) {
+                        const mapKey = Object.keys(data.svgElementMappings).find(k => {
+                            const v = String(data.svgElementMappings[k] || '').toLowerCase();
+                            return v.includes((id || '').toLowerCase()) || v.includes((normalizedName || '').toLowerCase());
+                        });
+                        if (mapKey) record = { measurement: mapKey, threshold: data.controlSystems[mapKey] || 'n/a', outcome: data.controlSystems[mapKey] || 'n/a' };
+                    }
+
+                    // build wrapper (overlay variant)
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'control-inline-detail overlay collapsed';
+                    wrapper.setAttribute('role','region');
+                    wrapper.setAttribute('tabindex','-1');
+                    // ensure wrapper is a positioned container so absolute-positioned children (close button)
+                    // are correctly anchored inside it regardless of when we set top/right later
+                    try { wrapper.style.position = wrapper.style.position || 'absolute'; wrapper.style.boxSizing = 'border-box'; } catch(e){}
+
+                    const grid = document.createElement('div');
+                    grid.className = 'control-inline-grid';
+                    grid.style.display = 'grid';
+                    grid.style.gridTemplateColumns = '1fr';
+                    grid.style.gap = '6px';
+
+                    const mkRow = (label, val, isOutcome=false) => {
+                        const row = document.createElement('div');
+                        row.style.display = 'flex';
+                        row.style.width = '100%';
+                        row.style.alignItems = 'center';
+                        row.style.gap = '8px';
+                        const l = document.createElement('div');
+                        l.style.fontWeight = '700';
+                        l.style.color = '#e6eef5';
+                        l.style.flex = '1 1 auto';
+                        l.textContent = label;
+                        const v = document.createElement('div');
+                        v.style.color = '#d0d0d0';
+                        v.style.flex = '0 0 auto';
+                        v.style.minWidth = '6ch';
+                        v.style.textAlign = 'right';
+                        v.textContent = val || '—';
+                        if (isOutcome) {
+                            const norm = String(val || '').toLowerCase();
+                            let cls = 'outcome-green';
+                            if (norm.includes('risk') || norm.includes('red')) cls = 'outcome-red';
+                            else if (norm.includes('trigger') || norm.includes('amber') || norm.includes('warn')) cls = 'outcome-amber';
+                            const dot = document.createElement('span'); dot.className = `outcome-dot ${cls}`;
+                            // If this row is the Overall Outcome, tag the dot so we can style it larger
+                            try { if (/overall\s*outcome/i.test(String(label || ''))) dot.classList.add('overall-outcome-dot'); } catch (e) {}
+                            v.insertBefore(dot, v.firstChild);
+                        }
+                        row.appendChild(l); row.appendChild(v); return row;
+                    };
+
+                    // No special-case here: let the default record/table rendering handle control details.
+                    let handledSpecial = false; // kept for compatibility with older logic; remains false
+
+                    // Build an Overall Outcome row but don't append it yet; we'll append it last so it appears as the final line
+                    let overallRow = null;
+                    let overallValueForIndicator = null;
+                    if (record) {
+                        const overallValue = (function() {
+                            if (typeof record['Overall Outcome'] !== 'undefined') return record['Overall Outcome'];
+                            if (typeof record['overall outcome'] !== 'undefined') return record['overall outcome'];
+                            if (typeof record.overallOutcome !== 'undefined') return record.overallOutcome;
+                            if (typeof record.outcome !== 'undefined') return record.outcome;
+                            if (typeof record.result !== 'undefined') return record.result;
+                            if (typeof record.status !== 'undefined') return record.status;
+                            return '—';
+                        })();
+                        overallValueForIndicator = overallValue;
+                        overallRow = mkRow('Overall Outcome', overallValue, true);
+                    }
+
+                    // Optionally include a small details table if more keys exist
+                    if (record && !handledSpecial && Object.keys(record).length > 3) {
+                        const details = document.createElement('div'); details.style.marginTop = '8px';
+                        const table = document.createElement('table'); table.style.width = '100%'; table.style.borderCollapse = 'collapse';
+                        Object.entries(record).forEach(([k,v]) => {
+                            const kn = String(k || '').trim().toLowerCase();
+                            // skip keys already shown above and any 'overall outcome' variants
+                            if (['measurement','threshold','outcome','key','limit','result','status'].includes(kn)) return; // already shown
+                            if (kn.replace(/\s+/g,'') === 'overalloutcome') return; // avoid duplicate Overall Outcome
+                            const tr = document.createElement('tr');
+                            const td1 = document.createElement('td'); td1.style.padding = '6px 8px'; td1.style.fontWeight = '700'; td1.style.width = '40%'; td1.textContent = k;
+                            const td2 = document.createElement('td'); td2.style.padding = '6px 8px';
+                            // If the key indicates an outcome, prepend a small dot
+                            const isOutcomeCell = /outcome$/i.test(String(k || '')) || /outcome/i.test(String(v || ''));
+                            if (isOutcomeCell) {
+                                const norm = String(v || '').toLowerCase();
+                                let cls = 'outcome-green';
+                                if (norm.includes('risk') || norm.includes('red')) cls = 'outcome-red';
+                                else if (norm.includes('trigger') || norm.includes('amber') || norm.includes('warn')) cls = 'outcome-amber';
+                                const dot = document.createElement('span'); dot.className = `outcome-dot ${cls}`;
+                                td2.appendChild(dot);
+                            }
+                            td2.appendChild(document.createTextNode(String(v)));
+                            tr.appendChild(td1); tr.appendChild(td2); table.appendChild(tr);
+                        });
+                        details.appendChild(table); wrapper.appendChild(details);
+                        // append Overall Outcome as the final row if present
+                        if (overallRow) grid.appendChild(overallRow);
+                    }
+
+                    // If there were no detail rows, append the Overall Outcome here so it is still last
+                    if (!record || Object.keys(record).length <= 3) {
+                        if (overallRow) grid.appendChild(overallRow);
+                    }
+
+                    wrapper.appendChild(grid);
+
+                    // append backdrop + overlay to right-panel so only the clicked control is focused
+                    const backdrop = document.createElement('div'); backdrop.className = 'control-inline-backdrop';
+
+                    // reusable close logic so multiple UI actions can close the overlay consistently
+                    const closeOverlay = (opts = {}) => {
+                        try { backdrop.remove(); } catch(e){}
+                        try { wrapper.remove(); } catch(e){}
+                        try { ci.classList.remove('control-open'); } catch(e){}
+                        try { document.querySelectorAll('.control-item.dimmed-by-overlay').forEach(x => x.classList.remove('dimmed-by-overlay')); } catch(e){}
+                        try { if (headingEl) { headingEl.classList.remove('dimmed-by-overlay'); headingEl.removeAttribute('aria-hidden'); } else document.querySelectorAll('.right-panel .control-environment.dimmed-by-overlay, .control-environment.dimmed-by-overlay').forEach(h=>{ h.classList.remove('dimmed-by-overlay'); h.removeAttribute('aria-hidden'); }); } catch(e){}
+                        try { document.removeEventListener('keydown', keyHandler); } catch(e){}
+                        try { if (opts.returnFocusTo) opts.returnFocusTo.focus && opts.returnFocusTo.focus(); } catch(e){}
+                    };
+
+                    backdrop.addEventListener('click', () => closeOverlay({ returnFocusTo: ci }));
+
+                    // Escape key handler to close overlay
+                    const keyHandler = (ev) => {
+                        if (!ev) return;
+                        if (ev.key === 'Escape' || ev.key === 'Esc') {
+                            ev.preventDefault && ev.preventDefault();
+                            closeOverlay({ returnFocusTo: ci });
+                        }
+                    };
+                    // compute top position so the overlay starts below the nearest preceding .control-environment heading
+                    let headingEl = null;
+                    try {
+                        let heading = ci.previousElementSibling;
+                        while (heading && !heading.classList.contains('control-environment')) heading = heading.previousElementSibling;
+                        if (!heading) heading = document.querySelector('.right-panel .control-environment') || document.querySelector('.control-environment');
+                        headingEl = heading || null;
+                        if (headingEl && rightPanel.contains(headingEl)) {
+                            const hRect = headingEl.getBoundingClientRect();
+                            const rpRect = rightPanel.getBoundingClientRect();
+                            const topOffset = Math.max(8, hRect.bottom - rpRect.top + 6);
+                            wrapper.style.position = 'absolute';
+                            wrapper.style.left = '12px';
+                            wrapper.style.right = '12px';
+                            wrapper.style.top = topOffset + 'px';
+                            wrapper.style.zIndex = 1200;
+                            // hide heading from assistive tech while overlay is present
+                            try { headingEl.setAttribute('aria-hidden', 'true'); } catch(e){}
+                        } else {
+                            wrapper.style.position = 'absolute'; wrapper.style.left = '12px'; wrapper.style.right = '12px'; wrapper.style.top = '12px'; wrapper.style.zIndex = 1200;
+                        }
+                    } catch (e) { wrapper.style.position = 'absolute'; wrapper.style.left = '12px'; wrapper.style.right = '12px'; wrapper.style.top = '12px'; wrapper.style.zIndex = 1200; }
+
+                    // Add overlay title showing the clicked control name
+                    try {
+                        const titleText = (ci.querySelector('.control-name') && ci.querySelector('.control-name').textContent) || (ci.id || 'Details');
+                        const titleEl = document.createElement('div');
+                        titleEl.className = 'overlay-title';
+                        titleEl.textContent = titleText;
+                        titleEl.setAttribute('role','heading');
+                        titleEl.style.fontWeight = '700';
+                        titleEl.style.marginBottom = '8px';
+                        titleEl.style.color = '#e6eef5';
+                        wrapper.insertBefore(titleEl, wrapper.firstChild);
+                        // add a close button in the top-right of the overlay
+                        try {
+                            const closeBtn = document.createElement('button');
+                            closeBtn.className = 'overlay-close';
+                            closeBtn.setAttribute('aria-label', 'Close overlay');
+                            // structure the label so the X can be styled independently and appear as (X Close)
+                            closeBtn.innerHTML = '(<span class="overlay-close-x">✕</span>&nbsp;<span class="overlay-close-label">Close</span>)';
+                            closeBtn.type = 'button';
+                            closeBtn.addEventListener('click', () => closeOverlay({ returnFocusTo: ci }));
+                            // insert close button as the first child so it visually sits above other content
+                            try { wrapper.insertBefore(closeBtn, wrapper.firstChild); } catch(e) { wrapper.appendChild(closeBtn); }
+                        } catch(e) {}
+                    } catch (e) {}
+
+                    // if an overlay exists already, close it (we only allow one)
+                    try { document.querySelectorAll('.control-inline-backdrop, .control-inline-detail.overlay').forEach(el => el.remove()); } catch(e){}
+                    rightPanel.appendChild(backdrop);
+                    rightPanel.appendChild(wrapper);
+                    // dim other control-items so the clicked one is visually focused
+                    try { document.querySelectorAll('.control-item').forEach(x => { if (x !== ci) x.classList.add('dimmed-by-overlay'); }); } catch(e){}
+                        try { if (headingEl) { headingEl.classList.add('dimmed-by-overlay'); headingEl.setAttribute('aria-hidden','true'); } else document.querySelectorAll('.right-panel .control-environment, .control-environment').forEach(h=>{ h.classList.add('dimmed-by-overlay'); h.setAttribute('aria-hidden','true'); }); } catch(e){}
+
+                    // listen for Escape to close overlay
+                    try { document.addEventListener('keydown', keyHandler); } catch(e){}
+
+                    // allow a paint/frame so the collapsed->open transition can animate
+                    requestAnimationFrame(() => { try { wrapper.classList.remove('collapsed'); wrapper.classList.add('is-open'); wrapper.focus(); } catch(e){} });
+                };
+
+                ci.addEventListener('click', (ev) => {
+                    // ensure clicks on child anchors/buttons don't double-toggle
+                    if (ev.target && (ev.target.closest('a') || ev.target.closest('button'))) return;
+                    ev.preventDefault && ev.preventDefault();
+                    // Before toggling, check whether the panel is already open
+                    const existing = ci.querySelector('.control-inline-detail');
+                    if (existing) {
+                        // closing: restore indicator size / status
+                        try {
+                            ci.classList.remove('control-open');
+                            const ind = ci.querySelector('.status-indicator');
+                            if (ind) {
+                                ind.style.width = '';
+                                ind.style.height = '';
+                                ind.style.boxShadow = '';
+                                // restore data-status from data attribute if present
+                                const orig = ci.getAttribute('data-status-original');
+                                if (orig) ci.setAttribute('data-status', orig);
+                            }
+                        } catch (e) {}
+                        renderDetail();
+                        return;
+                    }
+
+                    // opening: enlarge indicator and set it to Overall Outcome
+                    try {
+                        // before opening this control, restore any previously opened control to default
+                        try {
+                            document.querySelectorAll('.control-item.control-open').forEach(prev => {
+                                if (prev === ci) return;
+                                try { prev.classList.remove('control-open'); } catch(e){}
+                                try {
+                                    const pind = prev.querySelector('.status-indicator');
+                                    if (pind) { pind.style.width = ''; pind.style.height = ''; pind.style.boxShadow = ''; }
+                                } catch(e){}
+                                try {
+                                    const orig = prev.getAttribute('data-status-original');
+                                    if (orig !== null) prev.setAttribute('data-status', orig || '');
+                                } catch(e){}
+                            });
+                        } catch(e) {}
+                        // store original status if not already stored
+                        if (!ci.getAttribute('data-status-original')) ci.setAttribute('data-status-original', ci.getAttribute('data-status') || '');
+                        ci.classList.add('control-open');
+                        const ind = ci.querySelector('.status-indicator');
+                        if (ind) {
+                            ind.style.width = '18px';
+                            ind.style.height = '18px';
+                            ind.style.boxShadow = 'var(--glow-blue)';
+                            // map overallValueForIndicator to simplified data-status tag
+                            if (overallValueForIndicator) {
+                                const v = String(overallValueForIndicator).toLowerCase();
+                                if (v.includes('risk') || v.includes('red')) ci.setAttribute('data-status', 'at-risk');
+                                else if (v.includes('trigger') || v.includes('amber')) ci.setAttribute('data-status', 'at-trigger');
+                                else ci.setAttribute('data-status', 'at-target');
+                            }
+                        }
+                    } catch (e) { console.warn('Failed to enlarge indicator', e); }
+
+                    renderDetail();
+                });
+            });
+        } catch (e) { console.warn('wireControlItemPopups (inline) failed', e); }
+    }
+
     // Make the service card clickable and keyboard-operable. Emits 'service-card-open' event.
     wireServiceCard() {
         try {
             const el = document.getElementById('service-card');
             if (!el) return;
-            const ce = document.querySelector('.control-environment');
+            const ce = document.querySelector('.right-panel .control-environment') || document.querySelector('.control-environment');
             if (!ce) return;
 
             // Remove any previously created modal overlay so the large window is not visible
             try { const existingOverlay = document.querySelector('.service-modal-overlay'); if (existingOverlay) existingOverlay.remove(); } catch (e) { /* ignore */ }
 
-            // Start with blinking state so the 'Open Service Card Status' draws attention
+            // Do not auto-add blinking at startup; keep the action label visually steady by default.
+
+            // Ensure the action label never causes layout jumps by measuring the widest label
             try {
-                const initialAction = el.querySelector('.service-card-action');
-                if (initialAction && !initialAction.classList.contains('blinking')) initialAction.classList.add('blinking');
-            } catch (e) { /* ignore */ }
+                const actionEl = el.querySelector('.service-card-action');
+                if (actionEl) {
+                    const measureTextWidth = (text, refEl) => {
+                        const span = document.createElement('span');
+                        span.style.visibility = 'hidden';
+                        span.style.position = 'absolute';
+                        span.style.whiteSpace = 'nowrap';
+                        try {
+                            const cs = window.getComputedStyle(refEl);
+                            span.style.fontFamily = cs.fontFamily;
+                            span.style.fontSize = cs.fontSize;
+                            span.style.fontWeight = cs.fontWeight;
+                            span.style.letterSpacing = cs.letterSpacing;
+                        } catch (e) {}
+                        span.textContent = text;
+                        document.body.appendChild(span);
+                        const w = span.offsetWidth;
+                        span.remove();
+                        return w;
+                    };
+                    const w1 = measureTextWidth('Open Service Card Status', actionEl);
+                    const w2 = measureTextWidth('Return to Main', actionEl);
+                    const desired = Math.max(w1, w2) + 12; // padding buffer
+                    actionEl.style.minWidth = desired + 'px';
+                }
+            } catch (e) { /* non-fatal measurement */ }
 
             const toggleServicePanel = (ev) => {
                 if (ev && typeof ev.preventDefault === 'function') ev.preventDefault();
@@ -215,45 +645,22 @@ class RiskDashboard {
                     h.textContent = isFlipped ? 'SERVICE CARD DETAILS' : (ce.dataset._originalTitle || 'Control Environment Status');
                 }
 
-                // Replace the action label with a return button when flipped; restore when unflipped.
+                // Replace the action label in-place when flipped so the element's position and size remain stable.
                 try {
                     const actionEl = el.querySelector('.service-card-action');
-                    if (isFlipped) {
-                        // create a focused, accessible return button
-                        const btn = document.createElement('button');
-                        btn.type = 'button';
-                        btn.className = 'service-card-action service-card-return';
-                        btn.textContent = 'Return to Main';
-                        btn.setAttribute('aria-label', 'Return to Main');
-                        // copy computed sizing from the original action element so the button matches visually
-                        try {
-                            if (actionEl) {
-                                const cs = window.getComputedStyle(actionEl);
-                                if (cs.fontSize) btn.style.fontSize = cs.fontSize;
-                                if (cs.paddingTop && cs.paddingRight) btn.style.padding = `${cs.paddingTop} ${cs.paddingRight}`;
-                                if (cs.lineHeight) btn.style.lineHeight = cs.lineHeight;
-                                if (cs.minWidth) btn.style.minWidth = cs.minWidth;
-                            }
-                        } catch (e) {}
-                        // Clicking the button should unflip (use stopPropagation to avoid double toggles)
-                        btn.addEventListener('click', (e) => { e.stopPropagation(); toggleServicePanel(e); });
-                        // Replace existing element (if present) or append
-                        if (actionEl && actionEl.parentNode) actionEl.parentNode.replaceChild(btn, actionEl);
-                        else el.querySelector('.service-card-inner')?.appendChild(btn);
-                        try { btn.focus(); } catch (e) {}
-                    } else {
-                        // restore the original label text element (non-blinking)
-                        const div = document.createElement('div');
-                        div.className = 'service-card-action';
-                        div.textContent = 'Open Service Card Status';
-                        div.setAttribute('role', 'presentation');
-            if (actionEl && actionEl.parentNode) actionEl.parentNode.replaceChild(div, actionEl);
-                        else el.querySelector('.service-card-inner')?.appendChild(div);
+                    if (actionEl) {
+                        if (isFlipped) {
+                            actionEl.classList.add('service-card-return');
+                            actionEl.textContent = 'Return to Main';
+                        } else {
+                            actionEl.classList.remove('service-card-return');
+                            actionEl.textContent = 'Open Service Card Status';
+                        }
                     }
                 } catch (e) { /* ignore */ }
 
-        // When opened (isFlipped true) ensure blinking is removed from any action elements
-        try { if (isFlipped) { const a = el.querySelector('.service-card-action'); if (a && a.classList && a.classList.contains('blinking')) a.classList.remove('blinking'); } } catch (e) {}
+    // When opened (isFlipped true) ensure blinking is visually stopped by adding blink-stopped
+    try { if (isFlipped) { const a = el.querySelector('.service-card-action'); if (a && a.classList && a.classList.contains('blinking')) a.classList.add('blink-stopped'); } } catch (e) {}
 
                 // If a panel exists, focus first list item so keyboard users can see content
                 try {
@@ -274,6 +681,21 @@ class RiskDashboard {
                     }
                 } catch (e) { /* non-fatal */ }
             };
+
+            // Close the flipped service card when clicking outside
+            const outsideClickHandler = (ev) => {
+                try {
+                    const panelOpen = ce.classList.contains('flipped');
+                    if (!panelOpen) return;
+                    const target = ev.target;
+                    // If click is inside the service-card or the flipped control-environment, ignore
+                    if (!target) return;
+                    if (el.contains(target) || ce.contains(target)) return;
+                    // otherwise, unflip
+                    toggleServicePanel(ev);
+                } catch (e) { /* ignore */ }
+            };
+            document.addEventListener('click', outsideClickHandler);
 
             // Clicking the overall service card will toggle the flip. The inner return button stops propagation.
             el.addEventListener('click', (ev) => {
@@ -465,24 +887,42 @@ class RiskDashboard {
                 listWrap.setAttribute('role', 'document');
                 const ul = document.createElement('ul');
                 ul.className = 'service-card-blank-items';
-                const items = [
-                    'Combined assurance',
-                    'DWB',
-                    'Policy localization',
+                // Allow dynamic population from loaded data (preferred). Support several common keys.
+                const dataItems = (this.data && (this.data.serviceItems || this.data.serviceCardItems || this.data.services || this.data.service_card_items)) || null;
+                const defaultItems = [
+                    'Combined Assurance',
+                    'DWBs',
+                    'Policy Localization',
                     'Mandatory Training',
                     'RCA',
-                    'Risk control',
-                    'Risk reporting',
+                    'Risk Control',
+                    'Risk Reporting',
                     'Governance',
-                    'Reward'
+                    'Rewards'
                 ];
-                items.forEach(text => {
+                const itemsToRender = Array.isArray(dataItems) && dataItems.length ? dataItems : defaultItems;
+                itemsToRender.forEach(text => {
                     const li = document.createElement('li');
-                    li.textContent = text;
+                    // support objects with label/value as well as plain strings
+                    if (text && typeof text === 'object') {
+                        li.textContent = text.label || text.name || text.title || String(text.value || '');
+                        if (text.href) {
+                            const a = document.createElement('a');
+                            a.href = text.href;
+                            a.textContent = li.textContent;
+                            a.style.color = 'inherit';
+                            a.style.textDecoration = 'none';
+                            li.textContent = '';
+                            li.appendChild(a);
+                        }
+                    } else {
+                        li.textContent = String(text || '');
+                    }
                     ul.appendChild(li);
                 });
                 listWrap.appendChild(ul);
                 container.appendChild(listWrap);
+                try { this.renderServiceCardItems(); } catch (e) {}
             } catch (e) { /* non-fatal; leave blank if insertion fails */ }
         } catch (e) { /* ignore */ }
     }
@@ -574,6 +1014,28 @@ class RiskDashboard {
                 }
                 this.data = json;
                 this.lastDataHash = hash;
+                // After loading new data, refresh any dynamic service-card in-place lists
+                try { this.renderServiceCardItems(); } catch (e) {}
+                // Update the small 'Last Updated' display only when the incoming JSON actually changed.
+                try {
+                    const el = document.getElementById('last-updated');
+                    let display = '';
+                    if (json && json.metadata && json.metadata.lastUpdated) {
+                        const dt = new Date(json.metadata.lastUpdated);
+                        if (!isNaN(dt)) {
+                            const time = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                            const date = dt.toLocaleDateString([], { month: 'short', day: 'numeric' });
+                            display = `${date} ${time}`;
+                        }
+                    }
+                    if (!display) {
+                        const now = new Date();
+                        const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                        const date = now.toLocaleDateString([], { month: 'short', day: 'numeric' });
+                        display = `${date} ${time}`;
+                    }
+                    if (el) el.textContent = display;
+                } catch (e) { /* non-fatal */ }
                 // If incoming JSON contains netLossValue, use it to drive the fuel gauge (0..200, millions)
                 try {
                     const rawNet = this.data && this.data.netLossValue;
@@ -625,6 +1087,35 @@ class RiskDashboard {
             if (!this.data) this.data = this.getDefaultData();
             return true;
         }
+    }
+
+    // Render service card items in-place when the service card is blanked.
+    renderServiceCardItems() {
+        try {
+            // find any currently rendered blank list(s) (can be multiple if modal independent)
+            const lists = document.querySelectorAll('.service-card-blank-items');
+            if (!lists || lists.length === 0) return;
+            // Determine items from data or fallback
+            const dataItems = (this.data && (this.data.serviceItems || this.data.serviceCardItems || this.data.services || this.data.service_card_items)) || null;
+            const defaultItems = [
+                'Combined Assurance','DWBs','Policy Localization','Mandatory Training','RCA','Risk Control','Risk Reporting','Governance','Rewards'
+            ];
+            const itemsToRender = Array.isArray(dataItems) && dataItems.length ? dataItems : defaultItems;
+            lists.forEach(ul => {
+                // clear existing
+                ul.innerHTML = '';
+                itemsToRender.forEach(text => {
+                    const li = document.createElement('li');
+                    if (text && typeof text === 'object') {
+                        li.textContent = text.label || text.name || text.title || String(text.value || '');
+                        if (text.href) {
+                            const a = document.createElement('a'); a.href = text.href; a.textContent = li.textContent; a.style.color='inherit'; a.style.textDecoration='none'; li.textContent=''; li.appendChild(a);
+                        }
+                    } else li.textContent = String(text || '');
+                    ul.appendChild(li);
+                });
+            });
+        } catch (e) { /* ignore */ }
     }
 
     getDefaultData() {
@@ -708,7 +1199,7 @@ class RiskDashboard {
                 [() => this.createRpmNeedleFresh(), 'createRpmNeedleFresh failed'],
                 [() => this.wireRpmTestSlider(), 'wireRpmTestSlider failed'],
                 [() => this.wireEngineStartStop(), 'wireEngineStartStop failed'],
-                [() => this.createEngineOverlay(), 'createEngineOverlay failed'],
+                // [() => this.createEngineOverlay(), 'createEngineOverlay failed'],
                 [() => this._updatePoweredOffBlocker(), 'update powered-off blocker failed'],
                 [() => this._injectPoweredOffNoHoverStyle(), 'inject powered-off stylesheet failed'],
                 [() => this._applyInlineDim(), 'apply inline dim failed'],
@@ -782,23 +1273,7 @@ class RiskDashboard {
         if (!this.carDashboardSVG) return;
         const svg = this.carDashboardSVG;
         let hubX = this.gaugeHubX, hubY = this.gaugeHubY;
-        // Horizontal hub refinement: midpoint between 0 and 40 tick centers (keep Y fixed)
-        try {
-            const zeroRect = svg.querySelector('rect.cls-3[x="432.12"][y="316.26"]');
-            const maxRect = svg.querySelector('rect.cls-3[x="629.35"][y="311.73"]');
-            if (zeroRect && maxRect) {
-                const b0 = zeroRect.getBBox();
-                const b1 = maxRect.getBBox();
-                const c0x = b0.x + b0.width/2;
-                const c1x = b1.x + b1.width/2;
-                const midX = (c0x + c1x) / 2;
-                if (Math.abs(midX - hubX) > 0.2) {
-                    this.gaugeHubX = Number(midX.toFixed(2));
-                    hubX = this.gaugeHubX;
-                    console.debug('Horizontal hub shift applied', { oldHubX: this.gaugeHubX, newHubX: hubX, zeroCenterX: c0x, maxCenterX: c1x });
-                }
-            }
-        } catch (e) { console.warn('Hub X refinement failed', e); }
+    // Keep hub fixed: don't auto-refine hub X/Y to avoid visible pivot shifts
         const tickSelectors = [
             // 0
             'rect.cls-3[x="432.12"][y="316.26"]',
@@ -857,9 +1332,31 @@ class RiskDashboard {
                 tickAngles.push(Math.atan2(dy, dx) * 180 / Math.PI);
             } catch (e) { tickAngles.push(null); }
         }
+        // Always compute endpoint-based dynamic mapping as a fallback
+        try {
+            const zeroRect = svg.querySelector('rect.cls-3[x="432.12"][y="316.26"]');
+            const maxRect = svg.querySelector('rect.cls-3[x="629.35"][y="311.73"]');
+            if (zeroRect && maxRect) {
+                const b0 = zeroRect.getBBox();
+                const b1 = maxRect.getBBox();
+                const c0x = b0.x + b0.width/2, c0y = b0.y + b0.height/2;
+                const c1x = b1.x + b1.width/2, c1y = b1.y + b1.height/2;
+                const a0 = Math.atan2(c0y - hubY, c0x - hubX) * 180 / Math.PI;
+                let a40 = Math.atan2(c1y - hubY, c1x - hubX) * 180 / Math.PI;
+                // unwrap a40 so it's the nearest equivalent relative to a0 (avoid crossing -180/180 seam)
+                while (a40 - a0 > 180) a40 -= 360;
+                while (a40 - a0 < -180) a40 += 360;
+                this._speedAngle0Exact = a0;
+                this._speedAngleSlope = (a40 - a0) / 40;
+            }
+        } catch (e) { /* ignore */ }
         if (tickAngles.some(a => a === null)) {
-            this.speedTickMap = null;
-            console.warn('buildSpeedTickMap: missing tick(s), falling back to default mapping');
+            // Partial tick map: store what we have and use endpoint linear fallback in valueToAngle
+            this.speedTickMap = new Map();
+            for (let i = 0; i < scaleValues.length; i++) {
+                if (tickAngles[i] !== null) this.speedTickMap.set(scaleValues[i], tickAngles[i]);
+            }
+            console.warn('buildSpeedTickMap: missing some ticks; using partial map + endpoint linear fallback');
             return;
         }
         this.speedTickMap = new Map();
@@ -1274,22 +1771,26 @@ class RiskDashboard {
         // but keeps the engine-start-stop button visible and clickable.
         if (document.getElementById('powered-off-style')) return;
     const css = `
-    body.powered-off * { cursor: default !important; }
+    /* While powered-off, make all visual changes instant: disable transitions and animations */
+    body.powered-off * { cursor: default !important; transition: none !important; animation: none !important; }
     body.powered-off .right-panel,
     body.powered-off .alert-panel,
     body.powered-off .control-environment,
     body.powered-off .control-item,
     body.powered-off .service-card { pointer-events: none !important; }
-    body.powered-off .car-dashboard-wrapper { filter: grayscale(0.7) brightness(0.5); }
+    /* Avoid applying filters to the wrapper so child elements can escape the dim */
+    /* body.powered-off .car-dashboard-wrapper { filter: grayscale(0.7) brightness(0.5); } */
     /* Darken the right panel as well when powered off */
     body.powered-off .right-panel { position: relative; filter: grayscale(0.8) brightness(0.35); }
     body.powered-off .right-panel::after { content: ''; position: absolute; inset: 0; background: rgba(0,0,0,0.8); border-radius: inherit; pointer-events: none; z-index: 1; }
     /* Keep SVG interactive only for the engine button */
     body.powered-off #car-dashboard-svg svg *:not(#engine-start-stop) { pointer-events: none !important; }
-    body.powered-off #car-dashboard-svg #engine-start-stop { pointer-events: auto !important; opacity: 1 !important; filter: none !important; }
+    body.powered-off #car-dashboard-svg #engine-start-stop { pointer-events: auto !important; }
+    /* Keep the HTML engine start button visible and above the overlay */
+    body.powered-off .dashboard-start-button,
+    body.powered-off #engine-start-btn { position: relative; z-index: 5 !important; pointer-events: auto !important; cursor: pointer !important; opacity: 1 !important; filter: none !important; transform: none !important; }
     body.powered-off #car-dashboard-svg *:not(#engine-start-stop) { transition: none !important; }
     /* Ensure the HTML overlay button stays clickable and shows pointer even when off */
-    body.powered-off .engine-start-overlay { pointer-events: auto !important; cursor: pointer !important; }
     /* Neutralize hover/focus visual pops while off */
     body.powered-off .control-item:hover,
     body.powered-off .control-item:focus,
@@ -1309,6 +1810,49 @@ class RiskDashboard {
         document.head.appendChild(style);
     }
 
+    // Freeze key containers by converting them to fixed positioned elements with inline bounds
+    _freezePoweredOffContainers() {
+        try {
+            if (!this._frozenContainers) this._frozenContainers = new Map();
+            const freezeOne = (sel, zIndex) => {
+                try {
+                    const el = document.querySelector(sel);
+                    if (!el || this._frozenContainers.has(el)) return;
+                    const r = el.getBoundingClientRect();
+                    this._frozenContainers.set(el, el.getAttribute('style') || '');
+                    el.style.position = 'fixed';
+                    el.style.left = r.left + 'px';
+                    el.style.top = r.top + 'px';
+                    el.style.width = r.width + 'px';
+                    el.style.height = r.height + 'px';
+                    el.style.margin = '0';
+                    // disable transitions/animations inline to prevent any undimming animation
+                    el.style.transition = 'none';
+                    el.style.animation = 'none';
+                    el.style.pointerEvents = 'auto';
+                    if (zIndex) el.style.zIndex = zIndex;
+                } catch (e) { /* best-effort */ }
+            };
+            freezeOne('.dashboard-container', '1');
+            freezeOne('.main-dashboard', '1');
+            freezeOne('.car-dashboard-wrapper', '2');
+            freezeOne('.right-panel', '3');
+        } catch (e) { /* ignore */ }
+    }
+
+    _unfreezePoweredOffContainers() {
+        try {
+            if (!this._frozenContainers) return;
+            for (const [el, prev] of this._frozenContainers.entries()) {
+                try {
+                    if (prev) el.setAttribute('style', prev);
+                    else el.removeAttribute('style');
+                } catch (e) {}
+            }
+            this._frozenContainers.clear();
+        } catch (e) { /* ignore */ }
+    }
+
     // Apply inline styles to SVG descendants to ensure the powered-off dim is enforced
     // This uses element.style to apply !important-like behavior by setting properties directly
     // and re-applying them while powered-off. It avoids changing stylesheet files.
@@ -1318,87 +1862,125 @@ class RiskDashboard {
     // remains fully visible and interactive even when the embedded SVG/SVG filters are dimmed.
     // The overlay mirrors the SVG button position and size and sits above the powered-off overlay.
     createEngineOverlay() {
+        // Fully disabled: forcibly remove any overlays that may have been left in DOM
+        try {
+            document.querySelectorAll('.engine-start-overlay').forEach(el => el.remove());
+        } catch (e) {}
+        return null;
+    }
+
+    // Create a partial dim overlay over the dashboard wrapper that leaves the engine
+    // start area visually clear and interactive. The overlay is a positioned DIV with
+    // a CSS radial-gradient mask that creates a transparent 'hole' around the engine
+    // coordinates (in pixels relative to the wrapper). We compute the hole position
+    // from the embedded SVG engine-start-stop image bbox when possible.
+    _createPartialDimOverlay() {
         try {
             const host = document.querySelector('.car-dashboard-wrapper');
-            if (!host || !this.carDashboardSVG) return;
-            // Avoid duplicates
-            let overlayBtn = host.querySelector('.engine-start-overlay');
-            if (!overlayBtn) {
-                overlayBtn = document.createElement('button');
-                overlayBtn.className = 'engine-start-overlay';
-                overlayBtn.type = 'button';
-                overlayBtn.setAttribute('aria-label', 'Engine Start/Stop');
-                overlayBtn.style.position = 'absolute';
-                overlayBtn.style.zIndex = '3'; // above .powered-off-overlay (z-index:2)
-                overlayBtn.style.border = 'none';
-                overlayBtn.style.background = 'transparent';
-                overlayBtn.style.padding = '0';
-                overlayBtn.style.cursor = 'pointer';
-                overlayBtn.style.display = 'inline-grid';
-                overlayBtn.style.placeItems = 'center';
-                // inner image
-                const img = document.createElement('img');
-                img.alt = 'Engine Start Stop';
-                img.src = 'assets/Engine Start Stop.png';
-                img.style.width = '100%';
-                img.style.height = '100%';
-                img.style.pointerEvents = 'none';
-                overlayBtn.appendChild(img);
-                host.appendChild(overlayBtn);
-                // Wire events to toggle state
-                overlayBtn.addEventListener('click', () => {
-                    const svgImg = this.carDashboardSVG.getElementById('engine-start-stop');
-                    this._toggleEngineFromOverlay(overlayBtn, svgImg);
-                });
-                overlayBtn.addEventListener('keydown', (ev) => {
-                    if (ev.key === 'Enter' || ev.key === ' ' || ev.key === 'Spacebar') {
-                        ev.preventDefault();
-                        const svgImg = this.carDashboardSVG.getElementById('engine-start-stop');
-                        this._toggleEngineFromOverlay(overlayBtn, svgImg);
+            if (!host) return null;
+            // Remove existing partial overlay
+            host.querySelectorAll('.partial-dim-overlay, .engine-overlay-button').forEach(el => el.remove());
+
+            // Find SVG image bbox for engine-start-stop
+            let holeX = null, holeY = null, holeR = 36; // fallback radius
+            try {
+                const svg = this.carDashboardSVG;
+                if (svg) {
+                    const img = svg.getElementById('engine-start-stop');
+                    if (img) {
+                        const bb = img.getBBox();
+                        // Convert SVG coordinates to host pixel coordinates by using boundingClientRect of the SVG container
+                        const svgNode = document.getElementById('car-dashboard-svg');
+                        if (svgNode) {
+                            const svgRect = svgNode.getBoundingClientRect();
+                            // SVG viewBox units map to rendered SVG size; approximate using ratio
+                            const imgRect = img.getBoundingClientRect ? img.getBoundingClientRect() : null;
+                            if (imgRect) {
+                                holeX = imgRect.left + imgRect.width / 2 - host.getBoundingClientRect().left;
+                                holeY = imgRect.top + imgRect.height / 2 - host.getBoundingClientRect().top;
+                                holeR = Math.max( Math.max(imgRect.width, imgRect.height) / 2, 18 );
+                            } else {
+                                // Fallback: use SVG bbox and scale relative to container
+                                const svgBox = svg.getBBox();
+                                const svgEl = host.querySelector('svg');
+                                if (svgEl) {
+                                    const elRect = svgEl.getBoundingClientRect();
+                                    const sx = elRect.width / svgBox.width;
+                                    const sy = elRect.height / svgBox.height;
+                                    const cx = bb.x + bb.width / 2;
+                                    const cy = bb.y + bb.height / 2;
+                                    holeX = (cx - svgBox.x) * sx + elRect.left - host.getBoundingClientRect().left;
+                                    holeY = (cy - svgBox.y) * sy + elRect.top - host.getBoundingClientRect().top;
+                                    holeR = Math.max(bb.width * sx, bb.height * sy) / 2;
+                                }
+                            }
+                        }
                     }
-                });
-            }
+                }
+            } catch (e) { /* best effort */ }
 
-            // Initial aria pressed sync
-            try { overlayBtn.setAttribute('aria-pressed', String(!!this.engineActive)); } catch (e) {}
-
-            // Position the overlay to match the SVG button
-            const svgBtn = this.carDashboardSVG.getElementById('engine-start-stop');
-            if (!svgBtn) return;
-            // Position absolutely inside the dashboard wrapper so it stays anchored to the SVG
-            overlayBtn.style.position = 'absolute';
+            // If we couldn't compute exact hole coordinates, fallback to placing the hole near bottom-right area
             const hostRect = host.getBoundingClientRect();
-            const bRect = svgBtn.getBoundingClientRect();
-            const left = Math.round(bRect.left - hostRect.left);
-            const top = Math.round(bRect.top - hostRect.top);
-            const w = Math.round(bRect.width);
-            const h = Math.round(bRect.height);
-            overlayBtn.style.left = left + 'px';
-            overlayBtn.style.top = top + 'px';
-            overlayBtn.style.width = w + 'px';
-            overlayBtn.style.height = h + 'px';
-
-            // Reposition on resize
-        const reposition = () => {
-                try {
-            const hr = host.getBoundingClientRect();
-            const br = svgBtn.getBoundingClientRect();
-            overlayBtn.style.left = Math.round(br.left - hr.left) + 'px';
-            overlayBtn.style.top = Math.round(br.top - hr.top) + 'px';
-                    overlayBtn.style.width = Math.round(br.width) + 'px';
-                    overlayBtn.style.height = Math.round(br.height) + 'px';
-                } catch (e) { /* ignore */ }
-            };
-            // Store and attach a single listener
-            if (!this._engineOverlayReposition) {
-                this._engineOverlayReposition = reposition;
-                window.addEventListener('resize', this._engineOverlayReposition);
-                window.addEventListener('scroll', this._engineOverlayReposition, { passive: true });
-            } else {
-                // run once in case sizes changed
-                this._engineOverlayReposition();
+            if (holeX === null || holeY === null) {
+                holeX = hostRect.width - 80;
+                holeY = hostRect.height - 80;
+                holeR = 28;
             }
-        } catch (e) { /* ignore */ }
+
+            // Create overlay
+            const overlay = document.createElement('div');
+            overlay.className = 'partial-dim-overlay';
+            overlay.setAttribute('aria-hidden', 'true');
+            overlay.style.position = 'absolute';
+            overlay.style.inset = '0';
+            overlay.style.pointerEvents = 'none';
+            overlay.style.zIndex = '2';
+            // Create a radial-gradient that is transparent in center (the hole) and dark around
+            const cx = Math.round(holeX);
+            const cy = Math.round(holeY);
+            const r = Math.round(holeR + 16); // add some comfortable padding
+            // Use background with circle at position (cx px cy px)
+            overlay.style.background = `radial-gradient(circle at ${cx}px ${cy}px, rgba(0,0,0,0) ${Math.max(r-24,6)}px, rgba(0,0,0,0.55) ${r}px, rgba(0,0,0,0.85) 100%)`;
+
+            // Add no transition so the dim appears instantly and without perceptible animation
+            overlay.style.transition = 'none';
+            overlay.style.opacity = '1';
+
+            // Append overlay to host immediately (instant/imperceptible change)
+            host.appendChild(overlay);
+            // Create an overlayed HTML engine button to ensure clickability (but only if HTML button missing)
+            try {
+                const existingBtn = document.getElementById('engine-start-btn');
+                if (!existingBtn) {
+                    const btn = document.createElement('button');
+                    btn.className = 'engine-overlay-button';
+                    btn.setAttribute('aria-label', 'Start');
+                    btn.style.position = 'absolute';
+                    btn.style.left = (cx - holeR) + 'px';
+                    btn.style.top = (cy - holeR) + 'px';
+                    btn.style.width = (holeR*2) + 'px';
+                    btn.style.height = (holeR*2) + 'px';
+                    btn.style.border = 'none';
+                    btn.style.background = 'transparent';
+                    btn.style.zIndex = '3';
+                    btn.style.cursor = 'pointer';
+                    btn.style.pointerEvents = 'auto';
+                    btn.addEventListener('click', (e) => { try { const svgImg = this.carDashboardSVG && this.carDashboardSVG.getElementById('engine-start-stop'); this._toggleEngineFromOverlay(btn, svgImg); } catch (ee) {} });
+                    host.appendChild(btn);
+                }
+            } catch (e) {}
+
+            // overlay applied instantly (no fade)
+            return overlay;
+        } catch (e) { return null; }
+    }
+
+    _removePartialDimOverlay() {
+        try {
+            const host = document.querySelector('.car-dashboard-wrapper');
+            if (!host) return;
+            host.querySelectorAll('.partial-dim-overlay, .engine-overlay-button').forEach(el => el.remove());
+        } catch (e) {}
     }
 
     _toggleEngineFromOverlay(overlay, svgImg) {
@@ -1539,6 +2121,16 @@ class RiskDashboard {
     updateSVGWarningLights() {
         if (!this.carDashboardSVG || !this.data) return;
 
+        // If the engine is not active, avoid applying live colors which can cause a brief blink
+        // during startup. Instead enforce the neutral powered-off visuals and skip the rest.
+        if (!this.engineActive) {
+            try {
+                // enforce synchronously (with retries internally) and return early
+                this.enforcePoweredOffSvgVisuals({ attempts: 6, delay: 140 }).catch(() => {});
+            } catch (e) { /* ignore */ }
+            return;
+        }
+
         const statusColors = {
             'at-target': '#333333',
                 'at-trigger': '#FFBF00',
@@ -1550,6 +2142,29 @@ class RiskDashboard {
     // Precompute summary flags used later for indicators/headlight logic
     const anyAtRisk = Object.values(this.data.controlSystems || {}).some(raw => this.normalizeStatus(raw) === 'at-risk');
     const anyAtTrigger = Object.values(this.data.controlSystems || {}).some(raw => this.normalizeStatus(raw) === 'at-trigger');
+    // allAtRisk true when we have at least one control and every control is at-risk
+    const controlVals = Object.values(this.data.controlSystems || {});
+    const allAtRisk = (controlVals.length > 0) && controlVals.every(raw => this.normalizeStatus(raw) === 'at-risk');
+
+    // Resolve headlight id early so we can exclude it from the generic per-node pass
+    const headlightMappingEarly = (this.data.svgElementMappings && this.data.svgElementMappings.headlight) || 'headlight-warning-light';
+    const headlightResolvedIdEarly = this.resolveSvgId(headlightMappingEarly) || headlightMappingEarly;
+
+    // Helper: determine whether an indicator (by resolved svg id) should be active based on
+    // indicatorConditions and stressSituations in the JSON. Conditions may include 'allAtRisk'
+    // or named stress flags like 'upcomingAudit'.
+    const indicatorShouldActivate = (resolvedId) => {
+        try {
+            const conditions = (this.data.indicatorConditions && this.data.indicatorConditions[resolvedId]) || [];
+            if (!Array.isArray(conditions) || !conditions.length) return false;
+            // If any condition is satisfied, activate
+            for (const cond of conditions) {
+                if (cond === 'allAtRisk' && allAtRisk) return true;
+                if (this.data.stressSituations && this.data.stressSituations[cond]) return true;
+            }
+            return false;
+        } catch (e) { return false; }
+    };
 
     // Build reverse mapping: svgId (resolved) -> [systems...]
     const reverse = {};
@@ -1564,6 +2179,8 @@ class RiskDashboard {
 
     // For each unique svg id, compute aggregated status from its systems and update the node once
     Object.entries(reverse).forEach(([resolvedId, systems]) => {
+        // do not update the headlight in the generic pass — it is handled separately below
+        if (resolvedId === headlightResolvedIdEarly) return;
         const node = this.carDashboardSVG.getElementById(resolvedId);
         if (!node) {
             // attempt substring fallback using first system token
@@ -1614,7 +2231,7 @@ class RiskDashboard {
 
         // Derived parking light: turn on when all mapped systems are in 'at-risk'
         try {
-            const parkingNode = this.carDashboardSVG.getElementById('parking-warning-light');
+            const parkingNode = this.carDashboardSVG.getElementById('Traction-Control-Warning-Light');
             if (parkingNode) {
                 const allAtRisk = Object.entries(mappings).every(([system]) => this.normalizeStatus(this.data.controlSystems[system]) === 'at-risk');
                 const pColor = allAtRisk ? statusColors['at-risk'] : statusColors['at-target'];
@@ -1659,12 +2276,18 @@ class RiskDashboard {
             const leftId = this.resolveSvgId(leftMapping) || leftMapping;
             const rightId = this.resolveSvgId(rightMapping) || rightMapping;
 
-            // Headlight: amber when any alert at-trigger or at-risk, otherwise gray
+            // Headlight: controlled by indicatorConditions or allAtRisk; otherwise neutral
             const headlightNode = this.carDashboardSVG.getElementById(headlightId);
             if (headlightNode) {
-                const color = overallAlert ? '#FFBF00' : '#333333';
+                // Headlight is steady amber when its conditions are active; do not blink.
                 headlightNode.classList.remove('warning-blink');
                 headlightNode.style.filter = '';
+                let color = '#333333';
+                const activate = indicatorShouldActivate(headlightId);
+                if (activate) {
+                    color = '#FFBF00'; // amber steady
+                    // no blinking for headlight; keep steady amber
+                }
                 const shapes = headlightNode.querySelectorAll('path, circle, rect, polygon');
                 shapes.forEach(p => { p.setAttribute('fill', color); p.style.fill = color; });
             }
@@ -1676,9 +2299,18 @@ class RiskDashboard {
             [leftId, rightId].forEach(id => {
                 const node = this.carDashboardSVG.getElementById(id);
                 if (!node) return;
+                // determine whether this indicator should be active via indicatorConditions
+                const activate = indicatorShouldActivate(id);
                 const shapes = node.querySelectorAll('path, circle, rect, polygon');
-                shapes.forEach(p => { p.setAttribute('fill', indicatorColor); p.style.fill = indicatorColor; });
-                node.classList.toggle('warning-blink', isRisk);
+                const fillColor = activate ? '#18b618' : '#333333';
+                shapes.forEach(p => { p.setAttribute('fill', fillColor); p.style.fill = fillColor; });
+                // Blink whenever active (regardless of severity). Glow only on isRisk.
+                if (activate) node.classList.add('warning-blink'); else node.classList.remove('warning-blink');
+                if (activate && isRisk) {
+                    try { node.style.filter = `drop-shadow(0 0 8px ${fillColor})`; } catch (e) {}
+                } else {
+                    try { node.style.filter = ''; } catch (e) {}
+                }
             });
 
             console.debug('DBG indicator/headlight updated', { overallAlert, headlightId, leftId, rightId, isRisk });
@@ -1772,11 +2404,57 @@ class RiskDashboard {
             // Ensure overlay sits above images
             node.appendChild(overlay);
         }
-        overlay.setAttribute('fill', color);
-        overlay.style.fill = color;
-        overlay.style.filter = (status !== 'at-target') ? `drop-shadow(0 0 6px ${color})` : '';
-        overlay.classList.toggle('warning-blink', status === 'at-risk');
+        // sync overlay color and visibility
+        try { overlay.setAttribute('fill', color); overlay.style.fill = color; } catch (e) {}
+        }
+
+    // When the system is powered off we want every warning-light group to visually appear neutral.
+    // This helper enforces a flat fill (#333333) and clears any glow/blink. It retries a few times
+    // because the SVG or data may not be available immediately at startup.
+    enforcePoweredOffSvgVisuals(opts = {}) {
+        const attempts = Number(opts.attempts || 5);
+        const delay = Number(opts.delay || 120);
+        const targetFill = '#333333';
+        const tryOnce = () => {
+            if (!this.carDashboardSVG) return false;
+            // select groups by id pattern or class name
+            const candidates = Array.from(this.carDashboardSVG.querySelectorAll('[id]'))
+                .filter(n => String(n.id || '').toLowerCase().endsWith('-warning-light') || String(n.className && n.className.baseVal || n.className || '').toLowerCase().includes('warning-light'));
+            if (!candidates.length) return false;
+            candidates.forEach(node => {
+                try {
+                    node.classList.remove('warning-blink');
+                    node.style.filter = '';
+                    // update child shapes
+                    const shapes = node.querySelectorAll('path, circle, rect, polygon, image');
+                    if (shapes && shapes.length) {
+                        shapes.forEach(s => {
+                            try {
+                                if (/image/i.test(s.tagName)) return; // leave images alone
+                                s.setAttribute('fill', targetFill);
+                                s.style.fill = targetFill;
+                            } catch (e) {}
+                        });
+                    } else {
+                        // ensure overlay exists and is colored
+                        try { this.ensureOverlayIndicator(node, node.id || 'unknown', targetFill, 'at-target'); } catch (e) {}
+                    }
+                } catch (e) { /* ignore individual node errors */ }
+            });
+            return true;
+        };
+
+        let attempt = 0;
+        const run = () => {
+            attempt += 1;
+            const ok = tryOnce();
+            if (ok) return Promise.resolve(true);
+            if (attempt >= attempts) return Promise.resolve(false);
+            return new Promise(resolve => setTimeout(() => resolve(run()), delay));
+        };
+        return run();
     }
+    
 
     updateDashboardStatus() {
         if (!this.carDashboardSVG) return;
@@ -1916,24 +2594,55 @@ class RiskDashboard {
             const el = document.getElementById(this.controlItemMappings[mappingKey]);
             if (el) el.setAttribute('data-status', status);
         });
+        // Also refresh any right-panel static text from data.rightPanel if present
+        try { this.updateRightPanelText(); } catch (e) { /* non-fatal */ }
+    }
+
+    // Populate right-panel control names and status text from data.rightPanel when provided
+    updateRightPanelText() {
+        try {
+            const rp = this.data && this.data.rightPanel;
+            if (!rp) return;
+            Object.entries(rp).forEach(([id, info]) => {
+                try {
+                    const el = document.getElementById(id);
+                    if (!el) return;
+                    const nameEl = el.querySelector('.control-name');
+                    const statusEl = el.querySelector('.control-status');
+                    if (info.name && nameEl) nameEl.textContent = info.name;
+                    if (info.status && statusEl) {
+                        // Keep the status-light span inside the status text if present
+                        const light = statusEl.querySelector('.status-light');
+                        statusEl.textContent = info.status + ' ';
+                        if (light) statusEl.appendChild(light);
+                    }
+                } catch (e) { /* ignore per-control failures */ }
+            });
+        } catch (e) { /* non-fatal */ }
     }
 
     updateTimestamp() {
-        const now = new Date();
-        const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        const date = now.toLocaleDateString([], { month: 'short', day: 'numeric' });
-        const el = document.getElementById('last-updated'); if (el) el.textContent = `${date} ${time}`;
+    const now = new Date();
+    const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const date = now.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    const el = document.getElementById('last-updated');
+    if (el) el.textContent = `${date} ${time}`;
+    // Note: do NOT sync this data-driven last-updated into the main dashboard footer.
+    // The footer shows a live ISO 8601 clock (updated separately) per user request.
     }
 
     updateDashboard() {
         this.updateAlerts();
         this.updateControlSystems();
         this.updateSVGWarningLights();
-        const gaugeValue = (typeof this.data?.gaugeValue !== 'undefined') ? this.data.gaugeValue : 0;
+    const gaugeValue = (typeof this.data?.SRT !== 'undefined') ? this.data.SRT : ((typeof this.data?.gaugeValue !== 'undefined') ? this.data.gaugeValue : 0);
         try {
             if (!this.engineActive) {
-                // car off: point to zero
+                // car off: always force pointer to zero, even if animation is running
                 this.setGaugeToZero();
+                if (this._speedAnim && this._speedAnim.cancelled === false) {
+                    this._speedAnim.cancelled = true;
+                }
             } else {
                 // If a speed animation is currently running, avoid overriding it with an immediate set
                 if (!(this._speedAnim && this._speedAnim.cancelled === false)) {
@@ -1972,6 +2681,13 @@ class RiskDashboard {
             if (ytdEvents) {
                 ytdEvents.textContent = (this.engineActive && typeof this.data?.ytdRiskEvents !== 'undefined') ? ('YTD Risk Events: ' + this.data.ytdRiskEvents) : '';
             }
+            const mtdEvents = this.carDashboardSVG.getElementById('MTD-Risk-Events');
+            if (mtdEvents) {
+                // Accept either new camelCase key (mtdRiskEvents) or legacy key 'MTD Risk Events' from data files
+                const mtdVal = (typeof this.data?.mtdRiskEvents !== 'undefined') ? this.data.mtdRiskEvents
+                    : (typeof this.data?.['MTD Risk Events'] !== 'undefined' ? this.data['MTD Risk Events'] : undefined);
+                mtdEvents.textContent = (this.engineActive && typeof mtdVal !== 'undefined') ? ('MTD Risk Events: ' + mtdVal) : '';
+            }
             const grossLoss = this.carDashboardSVG.getElementById('gross-loss-value');
             if (grossLoss) {
                 grossLoss.textContent = (this.engineActive && typeof this.data?.grossLossValue !== 'undefined') ? ('Gross Loss: ' + this.data.grossLossValue) : '';
@@ -1985,7 +2701,7 @@ class RiskDashboard {
                 issuesOpen.textContent = (this.engineActive && typeof this.data?.issuesOpenValue !== 'undefined') ? ('Issues Open: ' + this.data.issuesOpenValue) : '';
             }
         }
-        this.updateTimestamp();
+    // Do not refresh the small '#last-updated' here; it is updated only when the JSON changes.
     }
 
     startRealTimeUpdates() {
@@ -1994,6 +2710,47 @@ class RiskDashboard {
             const changed = await this.loadData();
             if (changed) { this.updateDashboard(); console.log('Data updated'); }
         }, 5000);
+    }
+
+    // More robust watcher that focuses on detecting changes to data/risk-data.json and
+    // updating the small last-updated label plus the dashboard when new data arrives.
+    startDataWatcher(pollMs = 5000) {
+        if (this._dataWatcherInterval) clearInterval(this._dataWatcherInterval);
+        this._dataWatcherInterval = setInterval(async () => {
+            try {
+                const res = await fetch(`./data/risk-data.json?t=${Date.now()}`);
+                if (!res || !res.ok) return;
+                const json = await res.json();
+                const hash = JSON.stringify(json);
+                if (hash !== this.lastDataHash) {
+                    this.data = json;
+                    this.lastDataHash = hash;
+                    // update the small last-updated display using metadata if available
+                    try {
+                        const el = document.getElementById('last-updated');
+                        let display = '';
+                        if (json && json.metadata && json.metadata.lastUpdated) {
+                            const dt = new Date(json.metadata.lastUpdated);
+                            if (!isNaN(dt)) {
+                                const time = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                const date = dt.toLocaleDateString([], { month: 'short', day: 'numeric' });
+                                display = `${date} ${time}`;
+                            }
+                        }
+                        if (!display) {
+                            const now = new Date();
+                            const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                            const date = now.toLocaleDateString([], { month: 'short', day: 'numeric' });
+                            display = `${date} ${time}`;
+                        }
+                        if (el) el.textContent = display;
+                    } catch (e) { /* non-fatal */ }
+                    // Apply the new data to the UI
+                    try { this.updateDashboard(); } catch (e) { console.warn('updateDashboard after data watcher change failed', e); }
+                    console.log('Data watcher: new data loaded');
+                }
+            } catch (e) { /* ignore transient network errors */ }
+        }, pollMs);
     }
 
     // Normalize status strings from external data so synonyms are accepted.
@@ -2059,7 +2816,7 @@ class RiskDashboard {
     // Map a numeric gauge value (0..40) to rotation angle in degrees.
     valueToAngle(value) {
         const v = Math.max(0, Math.min(40, Number(value) || 0));
-        // If we have a speedTickMap, interpolate between the nearest ticks
+        // Prefer explicit tick map when available for per-tick accuracy
         if (this.speedTickMap && this.speedTickMap.size > 1) {
             const speeds = Array.from(this.speedTickMap.keys()).sort((a,b)=>a-b);
             // exact match
@@ -2072,6 +2829,10 @@ class RiskDashboard {
             const a0 = this.speedTickMap.get(low); const a1 = this.speedTickMap.get(high);
             const t = (v - low) / (high - low);
             return a0 + (a1 - a0) * t;
+        }
+        // Otherwise, use dynamic linear mapping from calibrated endpoints (0 and 40) if available
+        if (typeof this._speedAngle0Exact === 'number' && typeof this._speedAngleSlope === 'number') {
+            return this._speedAngle0Exact + this._speedAngleSlope * v;
         }
         // fallback linear mapping 0 -> -90deg, 40 -> +90deg
         return -90 + (v / 40) * 180;
@@ -2338,193 +3099,200 @@ class RiskDashboard {
         const g = this.carDashboardSVG.querySelector('#speed-pointer');
         if (g) {
             const cur = (this.data && typeof this.data.gaugeValue !== 'undefined') ? this.data.gaugeValue : 0;
+            // reapply translate then rotate
+            // store pointerDx for transform composition
+            const dx = this.pointerDx || 0;
+            try { g.setAttribute('transform', `translate(${dx} 0) rotate(0 ${this.gaugeHubX} ${this.gaugeHubY})`); } catch (e) {}
             this.updateSpeedPointer(cur);
         }
     }
 
+    // Compute gauge calibration from two anchor rects embedded in the SVG.
+    // Expects two rects (zeroRect and maxRect) with class 'cls-3' at positions
+    // provided by the user. We'll compute their centers and derive the angles
+    // relative to the pointer hub so value->angle interpolation can be linear.
+    computeGaugeCalibrationFromRects() {
+        try {
+            if (!this.carDashboardSVG) return;
+            // The artwork contains small rects near the ticks. We'll try to find
+            // two rects that look like the anchors the user specified. Use a
+            // heuristic: rects whose width/height are small and located roughly
+            // in the right half of the dashboard (speed gauge area).
+            const rects = Array.from(this.carDashboardSVG.querySelectorAll('rect'));
+            if (!rects.length) return;
+            // User-specified anchors (approximate) from request
+            const zeroApprox = { x: 432.12, y: 316.26 };
+            const maxApprox = { x: 629.35, y: 311.73 };
+            const findClosest = (pts) => {
+                let best = null; let bestD = Infinity;
+                for (const r of rects) {
+                    const rx = Number(r.getAttribute('x')) || 0;
+                    const ry = Number(r.getAttribute('y')) || 0;
+                    const rw = Number(r.getAttribute('width')) || 0;
+                    const rh = Number(r.getAttribute('height')) || 0;
+                    const cx = rx + rw / 2; const cy = ry + rh / 2;
+                    const d = Math.hypot(cx - pts.x, cy - pts.y);
+                    if (d < bestD) { bestD = d; best = {el: r, cx, cy, rw, rh}; }
+                }
+                return best;
+            };
+            const z = findClosest(zeroApprox);
+            const m = findClosest(maxApprox);
+            if (!z || !m) return;
+            // Compute angles (degrees) from hub to these centers
+            const hubX = this.gaugeHubX; const hubY = this.gaugeHubY;
+            const angleFromHub = (cx, cy) => {
+                // atan2 returns radians; convert to degrees and normalize so 0 is to the right
+                const rad = Math.atan2(cy - hubY, cx - hubX);
+                return rad * 180 / Math.PI;
+            };
+            const angle0 = angleFromHub(z.cx, z.cy);
+            const angle100 = angleFromHub(m.cx, m.cy);
+            // Store calibration: value 0 => angle0, value 100 => angle100
+            this._gaugeCal = { angle0, angle100 };
+        } catch (e) { /* ignore */ }
+    }
+
+    // Map a gauge numeric value (0..100) to an angle using calibration computed
+    // from the artwork. Falls back to linear -90..+90 if calibration missing.
+    valueToAngle(value) {
+        const v = Math.max(0, Math.min(100, Number(value) || 0));
+        if (this._gaugeCal && typeof this._gaugeCal.angle0 === 'number' && typeof this._gaugeCal.angle100 === 'number') {
+            const a0 = this._gaugeCal.angle0;
+            const a100 = this._gaugeCal.angle100;
+            const t = v / 100;
+            // We want the needle to move 'upwards' (visual y decreases) when
+            // value increases from zero. There are two angular paths between
+            // a0 and a40 (delta and delta +/- 360). Choose the one whose
+            // small-step moves the needle tip upward.
+            const rad = (deg) => deg * Math.PI / 180;
+            const hubX = this.gaugeHubX, hubY = this.gaugeHubY;
+            const yAt = (angleDeg) => Math.sin(rad(angleDeg)); // unit-radius y (relative to hub)
+            const rawDelta = a100 - a0;
+            // candidate deltas: rawDelta, rawDelta+360, rawDelta-360
+            const candidates = [rawDelta, rawDelta + 360, rawDelta - 360];
+            // evaluate which candidate produces an upward movement for a small t
+            const smallT = 0.02; // small fraction of full range
+            const baseY = yAt(a0);
+            let best = candidates[0];
+            let bestUp = null;
+            for (const d of candidates) {
+                const ang = a0 + d * smallT;
+                const y = yAt(ang);
+                const up = (y < baseY); // true if moved upward (y decreased)
+                if (bestUp === null) { bestUp = up; best = d; }
+                else if (up && !bestUp) { bestUp = up; best = d; }
+            }
+            const chosenDelta = best;
+            return a0 + chosenDelta * t;
+        }
+        // fallback
+        // fallback: prefer the visual upward movement from -90 towards +90
+        const a0f = -90, a100f = 90;
+        const rawDelta = a100f - a0f;
+        const candidates = [rawDelta, rawDelta + 360, rawDelta - 360];
+        const smallT = 0.02; const rad = (deg) => deg * Math.PI / 180; const yAt = (angleDeg) => Math.sin(rad(angleDeg));
+        const baseY = yAt(a0f);
+        let best = candidates[0]; let bestUp = null;
+        for (const d of candidates) {
+            const ang = a0f + d * smallT; const y = yAt(ang); const up = (y < baseY);
+            if (bestUp === null) { bestUp = up; best = d; } else if (up && !bestUp) { bestUp = up; best = d; }
+        }
+        return a0f + best * (v / 100);
+    }
+
+    // Load the external risk-data.json and set the gauge value from its `gaugeValue` property.
+    async loadRiskData() {
+        try {
+            const resp = await fetch('data/risk-data.json?t=' + Date.now());
+            if (!resp.ok) return;
+            const json = await resp.json();
+            if (json && typeof json.gaugeValue !== 'undefined') {
+                // Store the value but do NOT animate on initial load; the pointer
+                // should remain resting at zero until the system/engine is started
+                // or until the user interacts. Animation will occur on subsequent
+                // calls to setGaugeValue or when animatePointersToCurrent() is used.
+                try {
+                    if (!this.data) this.data = {};
+                    this.data.gaugeValue = Math.max(0, Math.min(40, Number(json.gaugeValue) || 0));
+                    // update any dynamic text immediately
+                    if (this.carDashboardSVG) {
+                        const gaugeText = this.carDashboardSVG.getElementById('gauge-dynamic-value');
+                        if (gaugeText) {
+                            gaugeText.textContent = this.data.gaugeValue;
+                            gaugeText.style.display = 'none';
+                        }
+                    }
+                } catch (e) {}
+            }
+        } catch (e) { /* ignore */ }
+    }
+
     // Rotate the pointer group with id 'speed-pointer' around the hub (535.38,307.38)
     updateSpeedPointer(value) {
-        if (!this.carDashboardSVG) return;
-        if (!this.carDashboardSVG.querySelector('#speed-pointer')) {
-            try { this.ensureSpeedPointer(); } catch (e) { /* ignore */ }
-        }
-        const g = this.carDashboardSVG.querySelector('#speed-pointer');
-        if (!g) return;
-        // Keep at zero while engine is off
-        if (!this.engineActive) {
-            const a0 = (this.speedTickMap && this.speedTickMap.has(0)) ? this.speedTickMap.get(0) : -90;
+        try {
+            if (!this.carDashboardSVG) return;
+            const g = this.carDashboardSVG.querySelector('#speed-pointer');
+            if (!g) return;
+            const v = Math.max(0, Math.min(40, Number(value) || 0));
+            // map using calibrated mapping (falls back to linear if missing)
+            const target = this.valueToAngle(v);
             const hubX = this.gaugeHubX, hubY = this.gaugeHubY;
-            g.setAttribute('transform', `rotate(${a0} ${hubX} ${hubY})`);
-            this._lastPointerAngle = a0; this._lastGaugeValue = 0;
-            return;
-        }
-        // Compute target angle and choose nearest equivalent to avoid wrap jumps
-        const rawTarget = this.valueToAngle(value);
-        const prevAngle = (typeof this._lastPointerAngle === 'number') ? this._lastPointerAngle : rawTarget;
-        const prevVal = (typeof this._lastGaugeValue === 'number') ? this._lastGaugeValue : value;
-        let target = rawTarget;
-        {
-            const candidates = [rawTarget, rawTarget + 360, rawTarget - 360];
-            let best = candidates[0];
-            let bestDelta = Math.abs(candidates[0] - prevAngle);
-            for (let i = 1; i < candidates.length; i++) {
-                const d = Math.abs(candidates[i] - prevAngle);
-                if (d < bestDelta) { best = candidates[i]; bestDelta = d; }
+            // Apply pointerDx translate if present by composing transforms
+            const dx = this.pointerDx || 0;
+            // If there's no previous angle, snap there immediately
+            if (typeof this._lastPointerAngle !== 'number') {
+                g.setAttribute('transform', `translate(${dx} 0) rotate(${target} ${hubX} ${hubY})`);
+                this._lastPointerAngle = target;
+                return;
             }
-            // Keep rotation direction consistent with value change
-            if (value > prevVal && best < prevAngle) best += 360;
-            if (value < prevVal && best > prevAngle) best -= 360;
-            target = best;
-        }
-        // Animate via rAF using only SVG attribute transforms
-        const hubX = this.gaugeHubX, hubY = this.gaugeHubY;
-        // cancel any running speed animation
-        if (this._speedAnim && this._speedAnim.cancelled === false) this._speedAnim.cancelled = true;
-        const anim = { cancelled: false };
-        this._speedAnim = anim;
-        const from = prevAngle;
-        const to = target;
-        const start = performance.now();
-        const dur = 400;
-        const easeOutCubic = x => 1 - Math.pow(1 - x, 3);
-        const step = (now) => {
-            if (anim.cancelled) return;
-            const t = Math.min(1, (now - start) / dur);
-            const u = easeOutCubic(t);
-            const cur = from + (to - from) * u;
-            g.setAttribute('transform', `rotate(${cur} ${hubX} ${hubY})`);
-            if (t < 1) requestAnimationFrame(step); else {
-                this._lastPointerAngle = to;
-                this._lastGaugeValue = value;
-            }
-        };
-        requestAnimationFrame(step);
-    // single speed pointer only; no secondary mirroring
+            // animate from last to target
+            const from = this._lastPointerAngle;
+            let to = target;
+            // choose shortest equivalent to avoid wrapping
+            const candidates = [to, to + 360, to - 360];
+            to = candidates.reduce((best, cur) => Math.abs(cur - from) < Math.abs(best - from) ? cur : best, candidates[0]);
+            if (this._speedAnim && this._speedAnim.cancel) this._speedAnim.cancelled = true;
+            const anim = { cancelled: false }; this._speedAnim = anim;
+            const start = performance.now(); const dur = 900;
+            const ease = x => 1 - Math.pow(1 - x, 3);
+            const step = (now) => {
+                if (anim.cancelled) return;
+                const t = Math.min(1, (now - start) / dur);
+                const u = ease(t);
+                const cur = from + (to - from) * u;
+                g.setAttribute('transform', `translate(${dx} 0) rotate(${cur} ${hubX} ${hubY})`);
+                if (t < 1) requestAnimationFrame(step); else this._lastPointerAngle = to;
+            };
+            requestAnimationFrame(step);
+        } catch (e) { /* ignore */ }
+    }
+
+    // Force-set the speed pointer angle for value (0..40) immediately, regardless of engine state or ongoing animations.
+    forceRotateSpeedPointer(value) {
+        try {
+            if (!this.carDashboardSVG) return;
+            const g = this.carDashboardSVG.querySelector('#speed-pointer');
+            if (!g) return;
+            const v = Math.max(0, Math.min(40, Number(value) || 0));
+            const target = this.valueToAngle(v);
+            const hubX = this.gaugeHubX, hubY = this.gaugeHubY;
+            const dx = this.pointerDx || 0;
+            if (this._speedAnim && this._speedAnim.cancel) this._speedAnim.cancelled = true;
+            g.setAttribute('transform', `translate(${dx} 0) rotate(${target} ${hubX} ${hubY})`);
+            this._lastPointerAngle = target;
+            this._lastGaugeValue = v;
+        } catch (e) { /* ignore */ }
     }
 
     ensureSpeedPointer() {
-        if (!this.carDashboardSVG) return;
-        const svg = this.carDashboardSVG;
-        const hubX = this.gaugeHubX, hubY = this.gaugeHubY;
-        // Dynamically compute needle length from farthest tick radius minus a margin.
-        let maxR = 0;
         try {
-            svg.querySelectorAll('rect.cls-3').forEach(r => {
-                const x = Number(r.getAttribute('x')) + (Number(r.getAttribute('width'))||0)/2;
-                const y = Number(r.getAttribute('y')) + (Number(r.getAttribute('height'))||0)/2;
-                const dx = x - hubX, dy = y - hubY;
-                const d = Math.hypot(dx, dy);
-                if (d > maxR) maxR = d;
-            });
-        } catch (e) { /* non-fatal */ }
-        if (!maxR) maxR = 120; // sensible fallback
-        const margin = 18; // keep tip inside tick arc
-        const baseLength = Math.max(60, Math.round(maxR - margin));
-    // RPM pointer visuals removed; use baseLength deterministically.
-    let length = baseLength;
-        const baseHalf = 4; // half thickness at hub
-        const tipHalf = 1;  // half thickness at tip
-
-        // Gradient definition (idempotent)
-        let defs = svg.querySelector('defs');
-        if (!defs) { defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs'); svg.insertBefore(defs, svg.firstChild); }
-        if (!svg.querySelector('#speedPointerGradient')) {
-            const lg = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
-            lg.setAttribute('id', 'speedPointerGradient');
-            lg.setAttribute('x1', '0%'); lg.setAttribute('y1', '50%');
-            lg.setAttribute('x2', '100%'); lg.setAttribute('y2', '50%');
-            const mkStop = (off, color, op) => { const s = document.createElementNS('http://www.w3.org/2000/svg', 'stop'); s.setAttribute('offset', off); s.setAttribute('stop-color', color); if (op !== undefined) s.setAttribute('stop-opacity', op); return s; };
-            lg.appendChild(mkStop('0%', '#8ae2ff', 0.15));
-            lg.appendChild(mkStop('55%', '#52bbff', 0.7));
-            lg.appendChild(mkStop('100%', '#0bf', 0.95));
-            defs.appendChild(lg);
-        }
-
-        const existing = svg.querySelector('#speed-pointer');
-        const x0 = hubX, y0 = hubY, x1 = hubX + length, y1 = hubY;
-        // Forward-only needle (does not extend left of hub)
-        const pathD = [
-            'M', (x0).toFixed(2), (y0 - baseHalf + 1.5).toFixed(2),
-            'L', (x0).toFixed(2), (y0 + baseHalf - 1.5).toFixed(2),
-            'L', (x1).toFixed(2), (y1 + tipHalf).toFixed(2),
-            'L', (x1).toFixed(2), (y1 - tipHalf).toFixed(2),
-            'Z'
-        ].join(' ');
-
-        if (existing) {
-            const needle = existing.querySelector('path');
-            if (needle) needle.setAttribute('d', pathD);
-            // Update hub circle sizes if they were from old version
-            const outer = existing.querySelector('circle[r="9.2"]');
-            if (outer) { outer.setAttribute('r', '7.5'); outer.setAttribute('stroke-width', '1'); }
-            const inner = existing.querySelector('circle[r="4.2"]');
-            if (inner) { inner.setAttribute('r', '3.6'); inner.setAttribute('stroke-width', '0.6'); }
-        } else {
-            const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-            group.setAttribute('id', 'speed-pointer');
-            group.setAttribute('style', 'transition:transform .45s cubic-bezier(.38,.01,.22,1); pointer-events:none;');
-            const needle = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-            needle.setAttribute('d', pathD);
-            needle.setAttribute('fill', 'url(#speedPointerGradient)');
-            needle.setAttribute('stroke', '#0bf');
-            needle.setAttribute('stroke-width', '0.6');
-            needle.setAttribute('stroke-linejoin', 'round');
-            group.appendChild(needle);
-            const hubOuter = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-            hubOuter.setAttribute('cx', hubX); hubOuter.setAttribute('cy', hubY); hubOuter.setAttribute('r', 7.5);
-            hubOuter.setAttribute('fill', '#fff'); hubOuter.setAttribute('stroke', '#0bf'); hubOuter.setAttribute('stroke-width', '1');
-            const hubInner = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-            hubInner.setAttribute('cx', hubX); hubInner.setAttribute('cy', hubY); hubInner.setAttribute('r', 3.6);
-            hubInner.setAttribute('fill', '#0bf'); hubInner.setAttribute('stroke', '#fff'); hubInner.setAttribute('stroke-width', '0.6');
-            group.appendChild(hubOuter); group.appendChild(hubInner);
-            const firstTick = svg.querySelector('rect.cls-3');
-            if (firstTick && firstTick.parentNode) firstTick.parentNode.insertBefore(group, firstTick); else svg.appendChild(group);
-        }
-    // no secondary pointer creation - single speed pointer only
-        // Apply current gaugeValue; keep pointer at zero while engine is off
-        const initVal = (typeof this.data?.gaugeValue !== 'undefined') ? this.data.gaugeValue : 0;
-        try {
-            const g = svg.querySelector('#speed-pointer');
-            // compute calibrated zero angle
-            const a0 = (this.speedTickMap && this.speedTickMap.has(0)) ? this.speedTickMap.get(0) : -90;
-            const hubX2 = this.gaugeHubX, hubY2 = this.gaugeHubY;
-            if (g) {
-                // place pointer at zero immediately and initialize continuity
-                g.setAttribute('transform', `rotate(${a0} ${hubX2} ${hubY2})`);
-                this._lastPointerAngle = a0;
-                this._lastGaugeValue = 0;
-            }
-            // Animate to initial value only if engine is ON
-            if (this.engineActive && initVal && initVal !== 0) {
-                // cancel any running speed animation
-                if (this._speedAnim && this._speedAnim.cancelled === false) this._speedAnim.cancelled = true;
-                const anim = { cancelled: false };
-                this._speedAnim = anim;
-                const from = a0;
-                let to = this.valueToAngle(initVal);
-                // Normalize target so the sweep always moves clockwise from 'from' -> 'to'
-                // (i.e., ensure `to` is greater than `from` by adding 360° multiples)
-                while (to <= from) to += 360;
-                const start = performance.now();
-                const dur = 450;
-                const ease = x => 1 - Math.pow(1 - x, 3);
-                const step = (now) => {
-                    if (anim.cancelled) return;
-                    const t = Math.min(1, (now - start) / dur);
-                    const u = ease(t);
-                    const cur = from + (to - from) * u;
-                    if (g) g.setAttribute('transform', `rotate(${cur} ${hubX2} ${hubY2})`);
-                    if (t < 1) requestAnimationFrame(step); else {
-                        this._lastPointerAngle = to;
-                        this._lastGaugeValue = initVal;
-                    }
-                };
-                requestAnimationFrame(step);
-            } else {
-                // keep at zero until engine is turned on
-                try { if (typeof this.data?.gaugeValue !== 'undefined') this._lastGaugeValue = 0; } catch (e) {}
-            }
-        } catch (e) { /* ignore */ }
+            if (!this.carDashboardSVG) return;
+            const g = this.carDashboardSVG.querySelector('#speed-pointer');
+            if (g) return g;
+            // If the artwork doesn't include the group (unlikely), do nothing here.
+            return null;
+        } catch (e) { return null; }
     }
 
     setGaugeValue(val) {
@@ -2532,11 +3300,19 @@ class RiskDashboard {
         const num = Number(val);
         if (!Number.isFinite(num)) return;
         this.data.gaugeValue = Math.max(0, Math.min(40, num));
-        try { this.updateSpeedPointer(this.data.gaugeValue); } catch (e) { /* non-fatal */ }
-        // reflect immediately in any dynamic text node
+        // Update numeric display but keep it hidden when the engine is off
         if (this.carDashboardSVG) {
             const gaugeText = this.carDashboardSVG.getElementById('gauge-dynamic-value');
-            if (gaugeText) gaugeText.textContent = this.data.gaugeValue;
+            if (gaugeText) {
+                gaugeText.textContent = this.data.gaugeValue;
+                try {
+                    gaugeText.style.display = this.engineActive ? '' : 'none';
+                } catch (e) {}
+            }
+        }
+        // Only animate the pointer when engine is active
+        if (this.engineActive) {
+            try { this.updateSpeedPointer(this.data.gaugeValue); } catch (e) { /* non-fatal */ }
         }
     }
 
@@ -2545,23 +3321,32 @@ class RiskDashboard {
         try {
             document.body.classList.toggle('powered-off', !this.engineActive);
             const img = this.carDashboardSVG && this.carDashboardSVG.getElementById('engine-start-stop');
-            if (img) img.setAttribute('aria-pressed', String(!!this.engineActive));
+            if (img) {
+                try { img.setAttribute('aria-pressed', String(!!this.engineActive)); } catch (e) {}
+                try { img.classList.toggle('engine-active', !!this.engineActive); } catch (e) {}
+            }
             // Manage powered-off visual overlay
             const host = document.querySelector('.car-dashboard-wrapper');
             if (host) {
-                let overlay = host.querySelector('.powered-off-overlay');
+                // Remove any legacy overlays that create a heavy dark background or duplicate start buttons.
+                try {
+                    host.querySelectorAll('.powered-off-overlay, .engine-start-overlay, .powered-off-start-button').forEach(el => el.remove());
+                } catch (e) {}
+
                 if (!this.engineActive) {
-                    if (!overlay) {
-                        overlay = document.createElement('div');
-                        overlay.className = 'powered-off-overlay';
-                        host.appendChild(overlay);
-                    }
                     // Snap pointers to zero when turning off
                     this.snapPointersToZero();
                     // RPM to zero
                     try { if (typeof this.setRpmToZero === 'function') this.setRpmToZero(); } catch (e) {}
-                } else if (overlay) {
-                    overlay.remove();
+                    // create a partial dim overlay that leaves the engine area clear
+                    try { this._createPartialDimOverlay(); } catch (e) {}
+                    // freeze containers to prevent layout shifts; make change instant
+                    try { this._freezePoweredOffContainers(); } catch (e) {}
+                } else {
+                    // Remove the partial dim overlay when powering on
+                    try { this._removePartialDimOverlay(); } catch (e) {}
+                    // unfreeze containers to restore normal layout
+                    try { this._unfreezePoweredOffContainers(); } catch (e) {}
                     // When turning on, animate to current data values
                     this.animatePointersToCurrent();
                     // RPM animate to current percent, if present
@@ -2572,6 +3357,44 @@ class RiskDashboard {
                 }
                 // Reflect text fields immediately on power toggle
                 try { this.updateDashboard(); } catch (e) { /* ignore */ }
+
+                // When engine is off, set all control items to at-target and add status-forced-off
+                try {
+                    const items = Array.from(document.querySelectorAll('.control-item'));
+                    if (!this.engineActive) {
+                        items.forEach(el => {
+                            el.setAttribute('data-status', 'at-target');
+                            el.classList.add('status-forced-off');
+                        });
+                    } else {
+                        // When engine is on, restore actual status from data and remove status-forced-off
+                        Object.entries(this.data.controlSystems || {}).forEach(([system, rawStatus]) => {
+                            const keyNorm = String(system).trim().toLowerCase();
+                            let status = this.normalizeStatus(rawStatus);
+                            if (keyNorm === 'seatbelt' || keyNorm === 'plantesting') {
+                                const s = (rawStatus && String(rawStatus).trim().toLowerCase()) === 'no' ? 'at-risk' : 'at-target';
+                                status = s;
+                            }
+                            const mappingKey = (String(system).trim().toLowerCase() === 'plantesting') ? 'seatbelt' : system;
+                            const el = document.getElementById(this.controlItemMappings[mappingKey]);
+                            if (el) {
+                                el.setAttribute('data-status', status);
+                                el.classList.remove('status-forced-off');
+                            }
+                        });
+                    }
+                } catch (e) { /* non-fatal */ }
+                // Ensure SVG visuals reflect power state: when off, force all warning lights to neutral #333333;
+                // when on, restore colors from data via updateSVGWarningLights(). Use a retry helper in case SVG
+                // hasn't loaded yet.
+                try {
+                    if (!this.engineActive) {
+                        // try to enforce powered-off visuals with retries
+                        try { this.enforcePoweredOffSvgVisuals(); } catch (e) { /* ignore */ }
+                    } else {
+                        try { this.updateSVGWarningLights(); } catch (e) { /* ignore */ }
+                    }
+                } catch (e) { /* non-fatal */ }
             }
         } catch (e) { /* ignore */ }
     }
@@ -2582,9 +3405,12 @@ class RiskDashboard {
             // Speed
             if (this.carDashboardSVG) {
                 const g = this.carDashboardSVG.querySelector('#speed-pointer');
-                const a0 = (this.speedTickMap && this.speedTickMap.has(0)) ? this.speedTickMap.get(0) : -90;
+                const a0 = this.valueToAngle(0);
                 if (g) {
-                    g.setAttribute('transform', `rotate(${a0} ${this.gaugeHubX} ${this.gaugeHubY})`);
+                    // preserve any pointerDx translate when snapping to zero
+                    const dx = this.pointerDx || 0;
+                    g.setAttribute('transform', `translate(${dx} 0) rotate(${a0} ${this.gaugeHubX} ${this.gaugeHubY})`);
+                    // Reset animation continuity so next animate starts from zero
                     this._lastPointerAngle = a0;
                     this._lastGaugeValue = 0;
                 }
@@ -2609,6 +3435,7 @@ class RiskDashboard {
     animatePointersToCurrent() {
         try {
             const gv = (typeof this.data?.gaugeValue !== 'undefined') ? this.data.gaugeValue : 0;
+            try { const gaugeText = this.carDashboardSVG && this.carDashboardSVG.getElementById('gauge-dynamic-value'); if (gaugeText) gaugeText.style.display = ''; } catch (e) {}
             this.updateSpeedPointer(gv);
         } catch (e) { /* ignore */ }
         try {
@@ -2643,12 +3470,16 @@ class RiskDashboard {
     // RPM subsystem removed completely per request
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-    const dashboard = new RiskDashboard();
-    window.dashboard = dashboard;
-    // ensure needle visually set to zero immediately if possible
-    try { if (window.dashboard && typeof window.dashboard.setRpmToZero === 'function') window.dashboard.setRpmToZero(); } catch (e) {}
-    // Quick debug helper accessible from console: setGauge( value )
-    window.setGauge = v => dashboard.setGaugeValue(v);
-    // No RPM runtime wiring required — RPM subsystem removed per request.
-});
+(function boot() {
+    const start = () => {
+        const dashboard = new RiskDashboard();
+        window.dashboard = dashboard;
+        try { if (window.dashboard && typeof window.dashboard.setRpmToZero === 'function') window.dashboard.setRpmToZero(); } catch (e) {}
+        window.setGauge = v => dashboard.setGaugeValue(v);
+    };
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', start, { once: true });
+    } else {
+        start();
+    }
+})();
