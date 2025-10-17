@@ -1,3 +1,11 @@
+/* Extend MANAGEMENT CONTROL APPROACH container to the right */
+.management-control-approach {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  align-self: stretch !important;
+  white-space: normal !important;
+}
 
 /* Inline detail panel shown inside control-item when drilled */
 .control-inline-detail { background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border: 1px solid rgba(255,255,255,0.04); border-radius: 6px; padding: 8px; margin-top: 8px; }
@@ -222,9 +230,9 @@ body {
 
 .dashboard-header-thin {
   background: var(--absa-red);
-  padding: 0.2rem 0.5rem;
+  padding: clamp(0.22rem, 1vw, 0.8rem) clamp(0.45rem, 2vw, 1.2rem);
   text-align: center;
-  width: 100%;
+  width: 100vw;
   box-sizing: border-box;
   border-radius: 0;
   display: block;
@@ -233,20 +241,21 @@ body {
   top: 0;
   left: 0;
   right: 0;
-  z-index: 9998; /* sit above content but below orientation overlay which uses 9999 */
+  z-index: 9998;
 }
 
 .dashboard-header-thin h1 {
-  /* keep title on one line; shrink font size before wrapping */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  margin: 0;
+  margin: 0 0 0.1rem 0;
   line-height: 1.05;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--text-primary);
-  font-size: clamp(1rem, 3.4vw, 1.6rem);
+  font-size: clamp(1rem, 1.8vw, 1.3rem);
+  font-weight: 700;
+  transition: font-size 0.2s;
 }
 
 .main-dashboard {
@@ -345,11 +354,14 @@ body {
    This final block is intentionally placed late in the file so it overrides earlier absolute sizes. */
 .right-panel {
   /* increase the effective font-size used by children when available */
-  font-size: calc(var(--rp-base) * 1.22) !important;
+  font-size: clamp(1.05rem, 2.1vw, 1.4rem) !important;
 }
 .right-panel h3, .right-panel h4, .right-panel .service-card-title, .right-panel .control-name, .right-panel .control-status, .right-panel .alert-message, .right-panel .alert-item {
   /* scale headings and common text elements using the rp tokens */
-  font-size: clamp(calc(var(--rp-base) * 1.0), 0.9rem + 0.8vw, calc(var(--rp-xlarge) * 1.1)) !important;
+  font-size: clamp(1.2rem, 2.4vw, 1.6rem) !important;
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: unset !important;
 }
 .right-panel .control-name { font-size: clamp(calc(var(--rp-large) * 0.98), 0.95rem + 0.6vw, calc(var(--rp-xlarge) * 1.08)) !important; }
 .right-panel .control-status { font-size: clamp(calc(var(--rp-small) * 0.98), 0.8rem + 0.5vw, calc(var(--rp-large) * 0.98)) !important; }
@@ -362,6 +374,65 @@ body {
 }
 
 /* Make sure images and inline svgs inside right-panel scale with rp-base */
+
+/* Compact overrides: drive right-panel sizing from the panel tokens so everything scales together.
+   Using token-derived values (var(--rp-base), var(--rp-token-base), etc.) ensures consistent
+   responsive behavior and avoids scattered literal clamp() values. */
+.right-panel .alert-panel {
+  font-size: var(--rp-large) !important;
+  padding: calc(var(--rp-token-base) * 0.06) calc(var(--rp-token-base) * 0.08) !important;
+}
+.right-panel .alert-panel h3 {
+  font-size: calc(var(--rp-xlarge) * 0.95) !important;
+  margin-bottom: calc(var(--rp-token-base) * 0.02) !important;
+  letter-spacing: 0.06em !important;
+}
+.right-panel .alert-critical {
+  font-size: var(--rp-base) !important;
+  padding: calc(var(--rp-token-base) * 0.04) calc(var(--rp-token-base) * 0.06) !important;
+  gap: 0.3ch !important;
+  min-height: calc(var(--rp-token-base) * 1.6) !important;
+}
+.right-panel .alert-icon {
+  font-size: calc(var(--rp-token-base) * 0.9) !important;
+  margin-right: calc(var(--rp-token-base) * 0.08) !important;
+}
+.right-panel .alert-message {
+  font-size: calc(var(--rp-token-base) * 0.95) !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+.right-panel .service-card {
+  padding: calc(var(--rp-token-base) * 0.06) !important;
+  margin: calc(var(--rp-token-base) * 0.02) !important;
+}
+.right-panel .service-card-inner {
+  gap: calc(var(--rp-token-base) * 0.06) !important;
+}
+.right-panel .service-card-title {
+  font-size: calc(var(--rp-token-base) * 0.95) !important;
+  font-weight: 700 !important;
+}
+.right-panel .service-card-action {
+  font-size: calc(var(--rp-token-base) * 0.9) !important;
+  padding: calc(var(--rp-token-base) * 0.02) calc(var(--rp-token-base) * 0.06) !important;
+  min-width: auto !important; /* override inline 207px */
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+.right-panel .control-environment h4,
+.right-panel .control-environment h4::after {
+  /* make control section headers shrink responsively instead of wrapping; use tokens */
+  display: block !important;
+  max-width: 100% !important;
+  font-size: calc(var(--rp-token-base) * 0.95) !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  margin: 0 !important;
+}
 .right-panel img.control-svg, .right-panel svg, .right-panel .control-icon svg, .right-panel .service-item-icon svg {
   width: calc(var(--rp-base) * 2.4) !important;
   height: calc(var(--rp-base) * 1.9) !important;
@@ -918,11 +989,15 @@ body.powered-off #engine-start-btn {
 /* Right-panel typography scale variables and intelligent sizing */
 .right-panel {
   /* base size adapts to viewport width but stays within readable bounds */
+  /* scale factor: change this to globally scale the right-panel (1 = default) */
+  --rp-panel-scale: 1;
+  /* raw base before scaling - preserves the existing clamp behavior */
+  --rp-base-raw: clamp(0.70rem, 0.80rem + 0.17vw, 0.98rem);
   /* further reduced scale to fit the page and match requested hierarchy */
   /* stronger base so right-panel typography/icons are larger by default */
   /* calibrated base so right-panel typography/icons are comfortable, not oversized */
   /* slightly reduced from the last bump so the right-panel is a bit smaller */
-  --rp-base: clamp(0.70rem, 0.80rem + 0.17vw, 0.98rem);
+  --rp-base: calc(var(--rp-base-raw) * var(--rp-panel-scale));
   --rp-small: calc(var(--rp-base) * 0.92);
   --rp-large: calc(var(--rp-base) * 1.02);
   --rp-xlarge: calc(var(--rp-base) * 1.14);
@@ -1013,33 +1088,34 @@ body.powered-off #engine-start-btn {
 /* Alert Panel */
 .alert-panel {
   background: #18191c !important;
-  padding: 0.18rem 0.25rem; /* tighter */
+  padding: clamp(0.04rem, 0.3vw, 0.08rem) clamp(0.06rem, 0.4vw, 0.1rem);
   border: 1px solid var(--absa-red);
   border-radius: 6px;
-  /* responsive font scaling for alert panel */
-  font-size: clamp(calc(var(--rp-token-base) * 0.82), 1.6vw, calc(var(--rp-token-base) * 1.02));
-  min-height: 48px;
+  font-size: clamp(0.5rem, 0.7vw, 0.75rem);
+  min-height: 22px;
   max-height: none;
   overflow: visible;
 }
 
 .alert-panel h3 {
-  font-size: clamp(calc(var(--rp-token-large) * 0.9), 2.4vw, calc(var(--rp-token-xlarge) * 1.05));
-  margin-bottom: 0.2rem;
+  font-size: clamp(0.7rem, 0.9vw, 0.95rem);
+  margin-bottom: 0.08rem;
   text-transform: uppercase;
   color: var(--absa-red-light);
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
 }
 
 .alert-critical {
   background: rgba(255, 0, 0, 0.05);
   border: 1px solid var(--status-red);
   border-radius: 4px;
-  /* keep content on one line; shrink text responsively instead of wrapping */
   display: flex;
   align-items: center;
-  gap: 0.5ch;
-  padding: 0.2rem 0.28rem;
+  gap: 0.25ch;
+  padding: clamp(0.02rem, 0.2vw, 0.06rem) clamp(0.03rem, 0.3vw, 0.06rem);
+  font-size: clamp(0.45rem, 0.6vw, 0.7rem);
+  min-height: 20px;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -1063,39 +1139,30 @@ body.powered-off #engine-start-btn {
   align-items: center;
   justify-content: center;
   vertical-align: middle;
-  font-size: clamp(0.9rem, calc(var(--rp-token-large, 16px) * 1), 1.5rem);
+  font-size: clamp(0.45rem, 0.6vw, 0.7rem);
   line-height: 1;
-  margin-right: 0.4ch;
+  margin-right: 0.2ch;
 }
 
 .alert-message {
   display: inline-block;
   vertical-align: middle;
-  white-space: nowrap; /* keep message on one line */
-  overflow: hidden;
-  text-overflow: ellipsis;
-  /* responsive font-size: shrink before wrapping */
-  font-size: clamp(0.78rem, 2.2vw, 1rem);
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  font-size: clamp(0.5rem, 0.65vw, 0.7rem);
 }
 
-/* Style for the inline alert icon (emoji or svg) so it scales and stays aligned */
-.alert-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  vertical-align: middle;
-  font-size: clamp(0.9rem, calc(var(--rp-token-large, 16px) * 1), 1.5rem);
-  line-height: 1;
-}
+/* normalized small icon/message sizing already declared above */
 
-.alert-message {
-  display: inline-block;
-  vertical-align: middle;
-  white-space: nowrap; /* keep message on one line */
-  overflow: hidden;
-  text-overflow: ellipsis;
-  /* responsive font-size: shrink before wrapping */
-  font-size: clamp(0.78rem, 2.2vw, 1rem);
+/* Reduce alert item font-size for compactness */
+.alert-item {
+  background: rgba(255, 171, 0, 0.05);
+  border: 1px solid var(--status-amber);
+  border-radius: 4px;
+  padding: 0.12rem;
+  margin-top: 0.12rem;
+  font-size: clamp(0.65rem, 0.9vw, 0.9rem);
 }
 
 .alert-item[data-status="at-trigger"] {
