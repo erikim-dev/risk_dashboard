@@ -252,51 +252,12 @@
     </div>
     <script src="script.js"></script>
     <script>
-    function checkOrientationAndSize() {
-        const overlay = document.getElementById('orientation-overlay');
-        const isPortrait = window.innerHeight > window.innerWidth;
-        if (isPortrait) {
-            // Show the orientation overlay but keep the header visible.
-            overlay.style.display = 'flex';
-            // Hide only the main dashboard content area; keep the fixed header visible
-            document.querySelector('.dashboard-container').style.display = 'block';
-            // Hide the center content but keep header and right-panel visible so header remains on top
-            try { document.querySelector('.center-dashboard').style.display = 'none'; } catch(e) {}
-        } else {
-            overlay.style.display = 'none';
-            document.querySelector('.dashboard-container').style.display = 'flex';
-            try { document.querySelector('.center-dashboard').style.display = 'flex'; } catch(e) {}
-        }
-
-        // Dynamically scale right-panel elements using a constrained viewport-derived token.
-        // We compute a base size in pixels from the smaller viewport dimension and clamp it
-        // to a sensible range so text/icons remain legible without becoming oversized.
-        try {
-            const minDim = Math.min(window.innerWidth || 800, window.innerHeight || 600);
-            // scaleFactor chosen so typical desktop widths produce ~12-16px base
-            const scaleFactor = 0.01; // 1% of the smaller viewport dimension
-            let base = Math.round(minDim * scaleFactor);
-            const minPx = 8; // minimum base in px (lowered so small screens shrink more)
-            const maxPx = 18; // maximum base in px
-            if (base < minPx) base = minPx;
-            if (base > maxPx) base = maxPx;
-            document.documentElement.style.setProperty('--rp-base', base + 'px');
-
-            // Also set a few derived tokens so CSS that expects numeric token values can use them
-            document.documentElement.style.setProperty('--rp-small', (base * 0.92) + 'px');
-            document.documentElement.style.setProperty('--rp-large', (base * 1.02) + 'px');
-            document.documentElement.style.setProperty('--rp-xlarge', (base * 1.14) + 'px');
-        } catch (e) {
-            // best-effort: fallback to a safe default
-            document.documentElement.style.setProperty('--rp-base', '13px');
-            document.documentElement.style.setProperty('--rp-small', '12px');
-            document.documentElement.style.setProperty('--rp-large', '13px');
-            document.documentElement.style.setProperty('--rp-xlarge', '15px');
-        }
-    }
-    window.addEventListener('resize', checkOrientationAndSize);
-    window.addEventListener('orientationchange', checkOrientationAndSize);
-    window.addEventListener('DOMContentLoaded', checkOrientationAndSize);
+    // Responsive scaling and orientation handling now centralized in script.js
+    // script.js exposes `ResponsiveScaler.init()` which will run on DOMContentLoaded.
+    // This placeholder ensures older browsers don't error if script.js is not yet loaded.
+    // Try to run init immediately (script.js may have loaded earlier), and also when DOMContentLoaded fires
+    try { if (window.ResponsiveScaler && typeof window.ResponsiveScaler.init === 'function') window.ResponsiveScaler.init(); } catch (e) {}
+    window.addEventListener('DOMContentLoaded', () => { try { if (window.ResponsiveScaler && typeof window.ResponsiveScaler.init === 'function') window.ResponsiveScaler.init(); } catch (e) {} });
     </script>
     <!-- Dev speed controls removed for testing -->
 </body>

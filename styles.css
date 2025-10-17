@@ -245,9 +245,10 @@ body {
 }
 
 .dashboard-header-thin h1 {
+  /* allow JS to control scaling; keep single-line where possible but avoid forced ellipsis */
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
+  text-overflow: unset;
   margin: 0 0 0.1rem 0;
   line-height: 1.05;
   letter-spacing: 0.12em;
@@ -331,9 +332,11 @@ body {
 
 /* Control icon sizing: centralized, scalable using --rp-base */
 .control-icon {
-  --ci-size: calc(var(--rp-base, 14px) * 2.0);
-  width: var(--ci-size);
-  height: var(--ci-size);
+  /* size using ems (1em = computed font-size of the parent .control-header) */
+  width: 1.6em;
+  height: 1.6em;
+  min-width: 1.6em;
+  min-height: 1.6em;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -346,8 +349,20 @@ body {
   max-height: 100%;
   display: block;
 }
-.control-icon img.control-svg {
-  object-fit: contain;
+.control-icon img.control-svg { object-fit: contain; }
+
+/* Round status indicator (small dot) scales with font-size */
+.status-indicator {
+  width: 0.9em;
+  height: 0.9em;
+  min-width: 0.9em;
+  min-height: 0.9em;
+  border-radius: 50%;
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: 0.6em;
+  background: var(--status-amber);
+  box-shadow: 0 0 6px rgba(0,0,0,0.35);
 }
 
 /* Authoritative right-panel scaling: make sure all textual elements scale with --rp-base
@@ -357,9 +372,9 @@ body {
   font-size: clamp(1.05rem, 2.1vw, 1.4rem) !important;
 }
 .right-panel h3, .right-panel h4, .right-panel .service-card-title, .right-panel .control-name, .right-panel .control-status, .right-panel .alert-message, .right-panel .alert-item {
-  /* scale headings and common text elements using the rp tokens */
-  font-size: clamp(1.2rem, 2.4vw, 1.6rem) !important;
-  white-space: normal !important;
+  /* scale headings and common text elements using the rp tokens. Avoid forced ellipsis; JS will set sizes. */
+  font-size: clamp(1.0rem, 1.6vw, 1.25rem) !important;
+  white-space: nowrap !important; /* prefer single-line so JS can shrink to fit; allow JS to change to normal when needed */
   overflow: visible !important;
   text-overflow: unset !important;
 }
@@ -371,6 +386,8 @@ body {
 .right-panel * {
   /* only override font-size if the element hasn't set it using rp tokens already */
   font-size: inherit !important;
+  /* allow flex children to shrink below their content width when necessary */
+  min-width: 0 !important;
 }
 
 /* Make sure images and inline svgs inside right-panel scale with rp-base */
@@ -785,21 +802,25 @@ text.percent-dynamic-value,
 }
 
 .indicator {
-  width: 30px;
-  height: 30px;
+  width: var(--indicator-size);
+  height: var(--indicator-size);
+  min-width: 16px;
+  min-height: 16px;
   background: rgba(0, 0, 0, 0.9);
-  border: 2px solid var(--border-color);
+  border: var(--indicator-border) solid var(--border-color);
   border-radius: 50%;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 
 .indicator svg {
-  width: 16px;
-  height: 16px;
+  width: calc(var(--indicator-size) * 0.55);
+  height: calc(var(--indicator-size) * 0.55);
+  max-width: 100%;
+  max-height: 100%;
   fill: var(--text-secondary);
-  opacity: 0.3;
+  opacity: 0.85;
 }
 
 .indicator.active {
@@ -816,10 +837,11 @@ text.percent-dynamic-value,
 /* Right-panel control-item status indicators (small circular lamp) */
 .control-item .status-indicator {
   /* default indicator: driven by right-panel tokens so it scales with --rp-base */
-  width: calc(var(--rp-token-base) * 0.9);
-  height: calc(var(--rp-token-base) * 0.9);
-  min-width: calc(var(--rp-token-base) * 0.55);
-  min-height: calc(var(--rp-token-base) * 0.55);
+  /* slightly reduced multipliers so indicator circles are smaller but still proportional */
+  width: var(--indicator-mini-size);
+  height: var(--indicator-mini-size);
+  min-width: calc(var(--indicator-mini-size) * 0.8);
+  min-height: calc(var(--indicator-mini-size) * 0.8);
   border-radius: 50%;
   background: rgba(255,255,255,0.04);
   border: 1px solid rgba(0,0,0,0.25);
@@ -1683,6 +1705,33 @@ body.powered-off #engine-start-btn {
   border-color: rgba(0,0,0,0.2);
   background: linear-gradient(180deg, rgba(0,0,0,0.14), rgba(0,0,0,0.08));
 }
+/* Make control-item a stable two-column row: left content (header + status text) and right indicator */
+.control-item {
+  /* keep original block flow to preserve stacking in the right-panel */
+  position: relative;
+  padding: 0.4rem 0.6rem;
+  margin: 0.12rem 0;
+}
+
+/* Ensure header and status stay in-flow and can shrink if needed */
+.control-item > .control-header,
+.control-item > .control-status {
+  display: block;
+}
+.control-item .control-header,
+.control-item .control-status {
+  min-width: 0;
+}
+
+/* Pin the small circular status indicator visually to the right of its control row */
+.control-item .status-indicator {
+  position: absolute;
+  right: calc(var(--rp-token-base) * 0.06);
+  top: 50%;
+  transform: translateY(-50%);
+  flex: none;
+  margin-left: 0;
+}
 .control-item.service-card:hover,
 .control-item.service-card:focus,
 .control-item.service-card.clickable:focus,
@@ -1998,3 +2047,110 @@ html, body, .dashboard-container {
   transform: none !important;
   zoom: 1 !important; /* neutralize any zoom property if injected */
 }
+
+/* ------------------------------------------------------------------
+   Right-panel enlargement overrides
+   Make the right-panel's tokens, typography, icons and indicators larger
+   so the contents are easier to read on typical desktop and tablet viewports.
+   These overrides are intentionally placed at the end to take precedence.
+-------------------------------------------------------------------*/
+.right-panel {
+  /* increase base token by ~25% to make everything uniformly larger */
+  --rp-token-base: calc(var(--rp-base) * 1.25) !important;
+  --rp-token-large: calc(var(--rp-base) * 1.6) !important;
+  --rp-token-xlarge: calc(var(--rp-base) * 2.1) !important;
+  font-size: calc(var(--rp-token-base) * 1) !important;
+}
+
+/* Headings and important labels — make them more prominent */
+.right-panel h3,
+.right-panel h4,
+.right-panel .service-card-title,
+.right-panel .control-name {
+  font-size: calc(var(--rp-token-base) * 1.15) !important;
+}
+.right-panel .control-status,
+.right-panel .alert-message,
+.right-panel .alert-item {
+  font-size: calc(var(--rp-token-base) * 0.95) !important;
+}
+
+/* Alert title larger */
+.right-panel .alert-panel h3 { font-size: calc(var(--rp-token-base) * 1.35) !important; }
+
+/* Service card action (make clickable text larger and keep reasonable min width) */
+.right-panel .service-card-action {
+  font-size: calc(var(--rp-token-base) * 1.05) !important;
+  min-width: min(22ch, 72vw) !important;
+}
+
+/* Icons and status indicators scale with token values */
+.right-panel .control-icon { width: calc(var(--rp-token-base) * 2.6) !important; height: calc(var(--rp-token-base) * 2.6) !important; }
+.right-panel .control-icon svg, .right-panel img.control-svg { width: 100% !important; height: 100% !important; }
+.right-panel .status-indicator { width: calc(var(--rp-token-base) * 1.6) !important; height: calc(var(--rp-token-base) * 1.6) !important; min-width: calc(var(--rp-token-base) * 1.1) !important; min-height: calc(var(--rp-token-base) * 1.1) !important; }
+
+/* Give control items a bit more breathing room */
+.right-panel .control-item { padding: calc(var(--rp-token-base) * 0.12) !important; }
+
+/* Ensure footer text also scales up slightly */
+.right-panel .panel-footer .update-time { font-size: calc(var(--rp-token-base) * 0.9) !important; }
+
+/* Make right-panel typography responsive to --rp-base using clamp()
+  This ensures text increases on larger screens and reduces on small screens. */
+.right-panel {
+  /* Define derived font-size values using clamp() so that combinations of --rp-base
+    and viewport changes produce smooth scaling without becoming unreadable. */
+  --rp-fs-small: clamp(0.65rem, calc(var(--rp-base) * 0.7 + 0.2vw), 0.95rem);
+  --rp-fs-base:  clamp(0.85rem, calc(var(--rp-base) * 0.95 + 0.4vw), 1.15rem);
+  --rp-fs-large: clamp(1.05rem, calc(var(--rp-base) * 1.25 + 0.8vw), 1.6rem);
+}
+
+.right-panel .control-name { font-size: var(--rp-fs-large) !important; }
+.right-panel .control-status { font-size: var(--rp-fs-base) !important; }
+.right-panel .alert-panel h3 { font-size: clamp(1rem, calc(var(--rp-base) * 1.3 + 0.8vw), 1.8rem) !important; }
+.right-panel .alert-message, .right-panel .alert-item { font-size: var(--rp-fs-base) !important; }
+.right-panel .service-card-title { font-size: var(--rp-fs-large) !important; }
+.right-panel .service-card-action { font-size: var(--rp-fs-base) !important; }
+.right-panel .service-list li, .right-panel .service-item-label { font-size: var(--rp-fs-base) !important; }
+
+/* Allow wrapping by default; JS will scale font sizes proportionally to container width
+   attempting to keep single-line when possible. If the element cannot fit at min size,
+   wrapping will occur as a graceful fallback. */
+.right-panel .control-name,
+.right-panel .control-status,
+.right-panel .alert-message,
+.right-panel .service-card-title,
+.right-panel .service-card-action {
+  white-space: normal !important;
+}
+
+/* Ensure control headers have flexible layout but stable min-width for icons */
+.right-panel .control-header { display: flex; align-items: center; gap: 0.5ch; }
+.right-panel .control-name { flex: 1 1 auto; min-width: 0; }
+.right-panel .control-status { flex: 0 0 auto; margin-left: 0.6ch; }
+
+/* Final overrides: icons scale with the font-size (em) and flex children allow truncation */
+.right-panel .control-icon {
+  flex: 0 0 auto;
+  padding: 0.12rem;
+  /* set an em-based font-size so SVG/img sized in em follow text scaling */
+  font-size: var(--rp-fs-base) !important;
+  width: auto !important;
+  height: auto !important;
+}
+.right-panel .control-icon svg,
+.right-panel .control-icon img.control-svg {
+  width: 1.6em !important;
+  height: 1.6em !important;
+  display: block !important;
+  max-width: none !important;
+}
+
+/* Let the control-name shrink and truncate instead of forcing layout change */
+.right-panel .control-item { min-width: 0; }
+.right-panel .control-item .control-name { min-width: 0; }
+
+/* Ensure service-card action does not force width on its container */
+.right-panel .service-card-action { min-width: 0 !important; max-width: 100% !important; }
+
+

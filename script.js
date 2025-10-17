@@ -3473,10 +3473,221 @@ class RiskDashboard {
     // RPM subsystem removed completely per request
 }
 
+/* ResponsiveScaler
+   Centralized helper that computes proportional CSS tokens and handles orientation/resize.
+   - Exposes window.ResponsiveScaler.init() to start.
+   - Sets: --rp-base, --rp-small, --rp-large, --rp-xlarge, --right-panel-width, --header-height
+   - Uses debounced resize handler and matchMedia breakpoints.
+*/
+(function(){
+    const ResponsiveScaler = {
+        config: {
+            scaleFactor: 0.01, // proportion of smaller viewport dimension to use as base px
+            minPx: 8,
+            maxPx: 18,
+            desktopRightPanel: { min: 240, preferredVw: 26, max: 440 },
+            headerHeightPx: 48
+        },
+        _debounceTimeout: null,
+        _ro: null,
+        computeAndApply() {
+            try {
+                const vw = Math.max(document.documentElement.clientWidth || window.innerWidth || 800, 320);
+                const vh = Math.max(document.documentElement.clientHeight || window.innerHeight || 600, 240);
+                const minDim = Math.min(vw, vh);
+
+                // Allow base to grow on larger screens by using a dynamic upper bound
+                // Increase scaleFactor slightly so large viewports produce larger base values
+                const scaleFactor = Math.max(this.config.scaleFactor, 0.012);
+                let raw = Math.round(minDim * scaleFactor);
+                // dynamic maximum proportional to viewport but capped at an absolute max
+                const dynamicMax = Math.min(36, Math.round(minDim * 0.02));
+                const maxAllowed = Math.max(this.config.maxPx, dynamicMax);
+                let base = raw;
+                if (base < this.config.minPx) base = this.config.minPx;
+                if (base > maxAllowed) base = maxAllowed;
+
+                // Apply rp tokens as pixel values
+                document.documentElement.style.setProperty('--rp-base', base + 'px');
+                document.documentElement.style.setProperty('--rp-small', Math.round(base * 0.92) + 'px');
+                document.documentElement.style.setProperty('--rp-large', Math.round(base * 1.02) + 'px');
+                document.documentElement.style.setProperty('--rp-xlarge', Math.round(base * 1.14) + 'px');
+                // Token family for component scaling (used throughout styles.css as --rp-token-base)
+                // Keep token values in px so calc(var(--rp-token-base) * n) works predictably.
+                document.documentElement.style.setProperty('--rp-token-base', Math.round(base * 1) + 'px');
+                document.documentElement.style.setProperty('--rp-token-small', Math.round(base * 0.72) + 'px');
+                document.documentElement.style.setProperty('--rp-token-large', Math.round(base * 1.14) + 'px');
+                // Indicator sizing tokens derived from token-base for predictable proportional scaling
+                // Large round indicators (reduced multiplier so lamps are less dominant)
+                document.documentElement.style.setProperty('--indicator-size', Math.round(base * 0.55) + 'px');
+                // Small inline status lights used inside control-items (reduced)
+                document.documentElement.style.setProperty('--indicator-mini-size', Math.round(base * 0.30) + 'px');
+                // Border thickness for indicators (slightly reduced; min 1px)
+                document.documentElement.style.setProperty('--indicator-border', Math.max(1, Math.round(base * 0.045)) + 'px');
+
+                // Compute right-panel width: use clamp(min, preferred vw, max)
+                const pref = Math.round((this.config.desktopRightPanel.preferredVw / 100) * vw);
+                const rpw = Math.min(Math.max(this.config.desktopRightPanel.min, pref), this.config.desktopRightPanel.max);
+                // If viewport is narrow, make right-panel full width
+                const rightPanelWidth = vw < 860 ? vw : rpw;
+                document.documentElement.style.setProperty('--right-panel-width', rightPanelWidth + 'px');
+
+                // header height token: measure actual header if present so layout pins correctly
+                try {
+                    const headerEl = document.querySelector('.dashboard-header-thin');
+                    const measuredHeader = headerEl ? Math.round(headerEl.getBoundingClientRect().height) : this.config.headerHeightPx;
+                    const headerHeightToUse = Math.max(this.config.headerHeightPx, measuredHeader || this.config.headerHeightPx);
+                    document.documentElement.style.setProperty('--header-height', headerHeightToUse + 'px');
+                } catch (e) {
+                    document.documentElement.style.setProperty('--header-height', this.config.headerHeightPx + 'px');
+                }
+
+                // Root font-size: scale with base but allow larger fonts on wide screens
+                const rootFontPx = Math.max(12, Math.min(22, Math.round(base * 1.15)));
+                document.documentElement.style.setProperty('font-size', rootFontPx + 'px');
+                // If a proportional scaler exists, run it after tokens change so elements update
+                try {
+                    if (window.ProportionalTextScaler && typeof window.ProportionalTextScaler.scaleAll === 'function') {
+                        window.ProportionalTextScaler.scaleAll();
+                    }
+                } catch (e) {}
+                // helpful debug log (will appear in DevTools console)
+                try { console.debug('ResponsiveScaler tokens set', { '--rp-base': base + 'px', '--rp-token-base': getComputedStyle(document.documentElement).getPropertyValue('--rp-token-base') }); } catch (e) {}
+            } catch (e) {
+                // safe fallbacks
+                document.documentElement.style.setProperty('--rp-base', '13px');
+                document.documentElement.style.setProperty('--rp-small', '12px');
+                document.documentElement.style.setProperty('--rp-large', '13px');
+                document.documentElement.style.setProperty('--rp-xlarge', '15px');
+                document.documentElement.style.setProperty('--right-panel-width', '320px');
+                document.documentElement.style.setProperty('--header-height', '48px');
+                document.documentElement.style.setProperty('font-size', '14px');
+            }
+        },
+        _onResize() {
+            if (this._debounceTimeout) clearTimeout(this._debounceTimeout);
+            this._debounceTimeout = setTimeout(() => { this.computeAndApply(); this._debounceTimeout = null; }, 80);
+        },
+        init() {
+            try {
+                this.computeAndApply();
+                // Listen to resize and orientation change
+                window.addEventListener('resize', () => this._onResize());
+                window.addEventListener('orientationchange', () => this._onResize());
+
+                // Observe .dashboard-container size changes (helpful in embedded contexts)
+                const container = document.querySelector('.dashboard-container') || document.documentElement;
+                try {
+                    if ('ResizeObserver' in window) {
+                        this._ro = new ResizeObserver(() => this._onResize());
+                        this._ro.observe(container);
+                    }
+                } catch (e) {}
+
+                // Use matchMedia to handle a mobile breakpoint for orientation overlay
+                try {
+                    const mq = window.matchMedia('(orientation: portrait)');
+                    const overlay = document.getElementById('orientation-overlay');
+                    const center = document.querySelector('.center-dashboard');
+                    const containerEl = document.querySelector('.dashboard-container');
+                    function applyOrientation(e) {
+                        const isPortrait = e.matches;
+                        if (overlay) overlay.style.display = isPortrait ? 'flex' : 'none';
+                        if (containerEl) containerEl.style.display = isPortrait ? 'block' : 'flex';
+                        if (center) center.style.display = isPortrait ? 'none' : 'flex';
+                    }
+                    applyOrientation(mq);
+                    if (mq.addEventListener) mq.addEventListener('change', applyOrientation);
+                    else if (mq.addListener) mq.addListener(applyOrientation);
+                } catch (e) {}
+            } catch (e) {
+                console.warn('ResponsiveScaler.init failed', e);
+            }
+        }
+    };
+
+    // Expose globally so index.html inline placeholder can call it safely
+    window.ResponsiveScaler = ResponsiveScaler;
+})();
+
+/* Debug overlay to visualize computed tokens and viewport size while tuning.
+   This is dismissible (click the X) and only added when DEBUG=true to avoid shipping UI.
+*/
+(function addDebugOverlay(){
+    const DEBUG = true; // set to false to disable
+    if (!DEBUG) return;
+    try {
+        const overlay = document.createElement('div');
+        overlay.id = 'rc-debug-overlay';
+        overlay.style.position = 'fixed';
+        overlay.style.right = '12px';
+        overlay.style.bottom = '12px';
+        overlay.style.zIndex = '99999';
+        overlay.style.background = 'rgba(0,0,0,0.6)';
+        overlay.style.color = '#fff';
+        overlay.style.padding = '8px 10px';
+        overlay.style.borderRadius = '8px';
+        overlay.style.fontSize = '12px';
+        overlay.style.fontFamily = 'Inter, sans-serif';
+        overlay.style.minWidth = '180px';
+        overlay.style.boxShadow = '0 6px 30px rgba(0,0,0,0.6)';
+        overlay.innerHTML = '<div id="rc-debug-close" style="position:absolute;left:6px;top:6px;cursor:pointer;font-weight:700;color:#ff8b8b">X</div><div id="rc-debug-body"></div>';
+        document.body.appendChild(overlay);
+        document.getElementById('rc-debug-close').addEventListener('click', () => overlay.remove());
+
+        const bodyEl = document.getElementById('rc-debug-body');
+        const update = () => {
+            const vw = document.documentElement.clientWidth || window.innerWidth;
+            const vh = document.documentElement.clientHeight || window.innerHeight;
+            const rpBase = getComputedStyle(document.documentElement).getPropertyValue('--rp-base') || '';
+            const rpSmall = getComputedStyle(document.documentElement).getPropertyValue('--rp-small') || '';
+            const rpLarge = getComputedStyle(document.documentElement).getPropertyValue('--rp-large') || '';
+            const rightW = getComputedStyle(document.documentElement).getPropertyValue('--right-panel-width') || '';
+            const rpTokenBase = getComputedStyle(document.documentElement).getPropertyValue('--rp-token-base') || '';
+            const indicatorSize = getComputedStyle(document.documentElement).getPropertyValue('--indicator-size') || '';
+            const indicatorMini = getComputedStyle(document.documentElement).getPropertyValue('--indicator-mini-size') || '';
+            const indicatorBorder = getComputedStyle(document.documentElement).getPropertyValue('--indicator-border') || '';
+
+            // computed element sizes (first matching elements)
+            let indEl = document.querySelector('.indicator');
+            let indSz = indEl ? (indEl.clientWidth + '×' + indEl.clientHeight) : '—';
+            let smallEl = document.querySelector('.control-item .status-indicator');
+            let smallSz = smallEl ? (smallEl.clientWidth + '×' + smallEl.clientHeight) : '—';
+
+            bodyEl.innerHTML = '<div><strong>Viewport:</strong> ' + vw + '×' + vh + '</div>' +
+                '<div><strong>--rp-base:</strong> ' + rpBase.trim() + '</div>' +
+                '<div><strong>--rp-small:</strong> ' + rpSmall.trim() + '</div>' +
+                '<div><strong>--rp-large:</strong> ' + rpLarge.trim() + '</div>' +
+                '<div><strong>--rp-token-base:</strong> ' + rpTokenBase.trim() + '</div>' +
+                '<div><strong>--indicator-size:</strong> ' + indicatorSize.trim() + '</div>' +
+                '<div><strong>--indicator-mini-size:</strong> ' + indicatorMini.trim() + '</div>' +
+                '<div><strong>--indicator-border:</strong> ' + indicatorBorder.trim() + '</div>' +
+                '<div><strong>computed .indicator:</strong> ' + indSz + '</div>' +
+                '<div><strong>computed .status-indicator:</strong> ' + smallSz + '</div>' +
+                '<div><strong>--right-panel-width:</strong> ' + rightW.trim() + '</div>';
+        };
+
+        // update on resize and on token changes via ResizeObserver
+        window.addEventListener('resize', () => update());
+        if ('ResizeObserver' in window) {
+            try {
+                const ro = new ResizeObserver(() => update());
+                ro.observe(document.documentElement);
+            } catch (e) {}
+        }
+        // initial update
+        setTimeout(update, 80);
+    } catch (e) { console.warn('debug overlay failed', e); }
+})();
+
 (function boot() {
     const start = () => {
+        // Ensure ResponsiveScaler tokens are applied before constructing the dashboard
+        try { if (window.ResponsiveScaler && typeof window.ResponsiveScaler.init === 'function') window.ResponsiveScaler.init(); } catch (e) {}
         const dashboard = new RiskDashboard();
         window.dashboard = dashboard;
+    // ensure proportional scaler runs after dashboard layout is created
+    try { if (window.ProportionalTextScaler && typeof window.ProportionalTextScaler.scaleAll === 'function') window.ProportionalTextScaler.scaleAll(); } catch (e) {}
         try { if (window.dashboard && typeof window.dashboard.setRpmToZero === 'function') window.dashboard.setRpmToZero(); } catch (e) {}
         window.setGauge = v => dashboard.setGaugeValue(v);
     };
@@ -3485,4 +3696,114 @@ class RiskDashboard {
     } else {
         start();
     }
+})();
+
+/* AutoTextScaler: scales text to fit its container width proportionally.
+   - Finds elements matching a selector and reduces font-size (in px) until text fits
+   - Uses a binary-search approach for speed and precision
+   - Respects a minFontPx to avoid unreadable text; if min reached allows wrapping
+*/
+/* ProportionalTextScaler: sets font-size proportional to element container width.
+   Simpler than binary search and provides smooth proportional scaling.
+   Each element's font-size is set to a percentage of its container width with min/max clamps.
+*/
+(function(){
+    // Per-selector percentage mapping so each type of text scales with the right visual weight.
+    // Tune these percentages (px per container-width unit) to adjust how aggressively each element scales.
+    // Global multiplier to quickly scale everything up/down during tuning
+    const SCALE_MULTIPLIER = 0.78; // user said previous sizes were too large; reduce by ~22%
+
+    const selectorMap = [
+        { sel: '.right-panel .alert-panel h3', pct: 0.075 * SCALE_MULTIPLIER }, // "System Alert"
+        { sel: '.right-panel .alert-icon', pct: 0.095 * SCALE_MULTIPLIER },
+        { sel: '.right-panel .service-card-title', pct: 0.065 * SCALE_MULTIPLIER },
+        { sel: '.right-panel .service-card-action', pct: 0.05 * SCALE_MULTIPLIER },
+        { sel: '.dashboard-header-thin h1', pct: 0.038 * SCALE_MULTIPLIER },
+        { sel: '.right-panel .control-environment h4', pct: 0.06 * SCALE_MULTIPLIER },
+        // Apply font-size to the whole header so icons (which use em units) scale with text
+        { sel: '.right-panel .control-header', pct: 0.052 * SCALE_MULTIPLIER },
+        { sel: '.right-panel .control-name', pct: 0.052 * SCALE_MULTIPLIER },
+        { sel: '.right-panel .control-status', pct: 0.046 * SCALE_MULTIPLIER },
+        { sel: '.right-panel .service-list li', pct: 0.046 * SCALE_MULTIPLIER },
+        { sel: '.right-panel .alert-message', pct: 0.05 * SCALE_MULTIPLIER },
+        { sel: '.panel-footer .update-time', pct: 0.038 * SCALE_MULTIPLIER },
+        { sel: '.main-last-updated', pct: 0.038 * SCALE_MULTIPLIER }
+    ];
+
+    const MIN_PX = 11;
+    const MAX_PX = 30; // reduce maximum so large screens don't make text too big
+
+    function scaleOne(el, pct) {
+        try {
+            const container = el.parentElement || el;
+            const cw = container.clientWidth || el.clientWidth;
+            if (!cw) return;
+            // compute desired font px as percentage of container width
+            let desired = Math.max(MIN_PX, Math.min(MAX_PX, Math.round(cw * pct)));
+            // apply the computed size with priority so it overrides stylesheet rules
+            try {
+                el.style.setProperty('font-size', desired + 'px', 'important');
+                el.style.setProperty('line-height', '1.05', 'important');
+            } catch (e) {
+                el.style.fontSize = desired + 'px';
+                el.style.lineHeight = '1.05';
+            }
+
+            // Try to keep on one line by shrinking iteratively until it fits or until MIN_PX
+            el.style.whiteSpace = 'nowrap';
+            let attempts = 0;
+            while (el.scrollWidth > el.clientWidth + 1 && attempts < 12) {
+                // reduce by 8% per attempt for smooth shrinking
+                const next = Math.max(MIN_PX, Math.round(desired * Math.pow(0.92, attempts + 1)));
+                if (next >= desired) break; // cannot reduce further
+                desired = next;
+                try { el.style.setProperty('font-size', desired + 'px', 'important'); } catch (e) { el.style.fontSize = desired + 'px'; }
+                attempts++;
+                // if we've reached min, stop trying to force single line
+                if (desired <= MIN_PX) break;
+            }
+
+            // If it still overflows even at MIN_PX, allow wrap to avoid truncation
+            if (el.scrollWidth > el.clientWidth + 1) {
+                el.style.whiteSpace = 'normal';
+            }
+        } catch (e) { /* ignore per-element failures */ }
+    }
+
+    function scaleAll() {
+        try {
+            selectorMap.forEach(({sel, pct}) => {
+                document.querySelectorAll(sel).forEach(el => scaleOne(el, pct));
+            });
+        } catch (e) {}
+    }
+
+    function init() {
+        // Re-run on resize/orientation and at DOMContentLoaded
+        window.addEventListener('resize', () => { setTimeout(scaleAll, 80); });
+        window.addEventListener('orientationchange', () => { setTimeout(scaleAll, 80); });
+        document.addEventListener('DOMContentLoaded', () => { setTimeout(scaleAll, 120); });
+
+        // Observe right-panel size changes to scale in embedded/iframe contexts
+        try {
+            if ('ResizeObserver' in window) {
+                const rp = document.querySelector('.right-panel') || document.documentElement;
+                if (rp) {
+                    const ro = new ResizeObserver(() => scaleAll());
+                    ro.observe(rp);
+                }
+            }
+        } catch (e) {}
+
+        // initial few runs to account for dynamic content
+        scaleAll();
+        let cnt = 0; const iv = setInterval(() => { scaleAll(); cnt++; if (cnt > 12) clearInterval(iv); }, 160);
+    }
+
+    // expose for external invocation and debugging
+    try { window.ProportionalTextScaler = { init: init, scaleAll: scaleAll }; } catch (e) {}
+
+    // auto-init
+    try { init(); } catch (e) {}
+
 })();
