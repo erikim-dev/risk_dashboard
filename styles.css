@@ -88,8 +88,15 @@
 
 /* Dim the control-environment heading/section when overlay is active */
 .control-environment.dimmed-by-overlay {
-  /* hide the heading entirely while overlay is open */
-  display: none !important;
+  /* hide the heading visually for assistive tech while keeping layout stable.
+     Using visibility:hidden preserves layout space so overlays positioned
+     relative to the heading don't shift when the heading is hidden. We also
+     reduce opacity and pointer events for a smooth dimming effect. */
+  visibility: hidden !important;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition: opacity 180ms var(--anim-ease), transform 180ms var(--anim-ease), visibility 180ms;
 }
 
 /* Overlay title shown at the top of the focused detail panel */
@@ -222,19 +229,24 @@ body {
   border-radius: 0;
   display: block;
   height: auto;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9998; /* sit above content but below orientation overlay which uses 9999 */
 }
 
 .dashboard-header-thin h1 {
-  font-size: clamp(1.2rem, 2vw, 2.2rem);
-  margin: 0;
-  line-height: 1.1;
-  height: calc(1.1 * clamp(1.2rem, 2vw, 2.2rem));
-  overflow: hidden;
+  /* keep title on one line; shrink font size before wrapping */
   white-space: nowrap;
+  overflow: hidden;
   text-overflow: ellipsis;
+  margin: 0;
+  line-height: 1.05;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--text-primary);
+  font-size: clamp(1rem, 3.4vw, 1.6rem);
 }
 
 .main-dashboard {
@@ -245,9 +257,9 @@ body {
   overflow: hidden;
   min-height: 0;
   align-items: stretch;
-  /* Ensure the center area and side panel exactly fill the remaining viewport height */
+  /* Ensure the center area and side panel exactly fill the remaining viewport height, account for fixed header */
   height: calc(100vh - var(--header-height));
-  margin-top: 0.5rem;
+  margin-top: var(--header-height); /* push content below fixed header */
   /* keep horizontal padding only on the center area to avoid creating a gap on the right edge */
   padding-left: var(--gutter);
   padding-right: 0;
@@ -558,9 +570,13 @@ text.percent-dynamic-value,
   color: #dfeff6;
   font-weight: 600;
   /* make the Service Card title responsive and larger */
-  font-size: clamp(calc(var(--rp-large) * 1.02), 1rem + 0.6vw, calc(var(--rp-xlarge) * 1.28));
+  /* responsive title that shrinks before wrapping */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: clamp(calc(var(--rp-large) * 0.92), 1.6vw, calc(var(--rp-xlarge) * 1.1));
 }
-.service-card-action { color: #00bfff; font-weight:700; text-align:right; font-size: calc(var(--rp-small) * 0.98); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 0 8px rgba(0,191,255,0.9); padding: 1px 4px; }
+.service-card-action { color: #00bfff; font-weight:700; text-align:right; /* shrink text responsively to avoid wrapping */ font-size: clamp(calc(var(--rp-small) * 0.78), 2.2vw, calc(var(--rp-large) * 1.02)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 0 8px rgba(0,191,255,0.9); padding: 1px 4px; }
 .service-card:focus { outline: 3px solid rgba(0,191,255,0.12); outline-offset: 2px; }
 .service-card:active { transform: translateY(1px); }
 .service-card-action:focus { outline: none; }
@@ -570,7 +586,8 @@ text.percent-dynamic-value,
 /* Keep the service-card-action width stable to prevent jumping when the text changes */
 .service-card-action {
   display: inline-block;
-  min-width: 14ch; /* reserve width for the longer 'Open Service Card Status' text */
+  /* token-driven min-width but constrained by viewport so it won't force wrapping on narrow screens */
+  min-width: min(14ch, 60vw);
   padding: 4px 8px;
 }
 .service-card-action.service-card-return { cursor: pointer; }
@@ -874,9 +891,9 @@ body.powered-off #engine-start-btn {
   grid-row: 4 / 5; /* ensure it sits in the expandable grid row */
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
-  padding: 0.16rem;
-  overflow: auto;
+  gap: calc(var(--rp-token-base) * 0.04);
+  padding: calc(var(--rp-token-base) * 0.06);
+  overflow: visible; /* prefer scaling to fit rather than internal scroll */
   min-height: 0; /* enable proper shrinking in flex/grid layouts */
 }
 
@@ -888,14 +905,14 @@ body.powered-off #engine-start-btn {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: calc(var(--rp-base) * 0.9) calc(var(--rp-base) * 0.6);
-  gap: 0.18rem;
+  padding: calc(var(--rp-token-base) * 0.36) calc(var(--rp-token-base) * 0.28);
+  gap: calc(var(--rp-token-base) * 0.04);
   border-radius: 8px;
   background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(0,0,0,0.04));
 }
 
 /* When there are many items, allow them to keep a practical min-size */
-.control-items > .control-item { min-height: calc(var(--rp-base) * 3.6); }
+.control-items > .control-item { min-height: calc(var(--rp-base) * 2.6); }
 
 
 /* Right-panel typography scale variables and intelligent sizing */
@@ -999,14 +1016,15 @@ body.powered-off #engine-start-btn {
   padding: 0.18rem 0.25rem; /* tighter */
   border: 1px solid var(--absa-red);
   border-radius: 6px;
-  font-size: 0.5rem;
+  /* responsive font scaling for alert panel */
+  font-size: clamp(calc(var(--rp-token-base) * 0.82), 1.6vw, calc(var(--rp-token-base) * 1.02));
   min-height: 48px;
   max-height: none;
   overflow: visible;
 }
 
 .alert-panel h3 {
-  font-size: 0.6rem;
+  font-size: clamp(calc(var(--rp-token-large) * 0.9), 2.4vw, calc(var(--rp-token-xlarge) * 1.05));
   margin-bottom: 0.2rem;
   text-transform: uppercase;
   color: var(--absa-red-light);
@@ -1017,8 +1035,11 @@ body.powered-off #engine-start-btn {
   background: rgba(255, 0, 0, 0.05);
   border: 1px solid var(--status-red);
   border-radius: 4px;
-  padding: 0.25rem;
-  font-size: 0.55rem;
+  /* keep content on one line; shrink text responsively instead of wrapping */
+  display: flex;
+  align-items: center;
+  gap: 0.5ch;
+  padding: 0.2rem 0.28rem;
   cursor: pointer;
 }
 
@@ -1033,7 +1054,48 @@ body.powered-off #engine-start-btn {
   border-radius: 4px;
   padding: 0.18rem;
   margin-top: 0.18rem;
-  font-size: 0.5rem;
+  font-size: clamp(calc(var(--rp-token-base) * 0.78), 1.8vw, calc(var(--rp-token-base) * 0.98));
+}
+
+/* Alert icon/message inline styles - keep them on a single shrinking line */
+.alert-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  font-size: clamp(0.9rem, calc(var(--rp-token-large, 16px) * 1), 1.5rem);
+  line-height: 1;
+  margin-right: 0.4ch;
+}
+
+.alert-message {
+  display: inline-block;
+  vertical-align: middle;
+  white-space: nowrap; /* keep message on one line */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* responsive font-size: shrink before wrapping */
+  font-size: clamp(0.78rem, 2.2vw, 1rem);
+}
+
+/* Style for the inline alert icon (emoji or svg) so it scales and stays aligned */
+.alert-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  font-size: clamp(0.9rem, calc(var(--rp-token-large, 16px) * 1), 1.5rem);
+  line-height: 1;
+}
+
+.alert-message {
+  display: inline-block;
+  vertical-align: middle;
+  white-space: nowrap; /* keep message on one line */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* responsive font-size: shrink before wrapping */
+  font-size: clamp(0.78rem, 2.2vw, 1rem);
 }
 
 .alert-item[data-status="at-trigger"] {

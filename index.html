@@ -255,11 +255,16 @@
         const overlay = document.getElementById('orientation-overlay');
         const isPortrait = window.innerHeight > window.innerWidth;
         if (isPortrait) {
+            // Show the orientation overlay but keep the header visible.
             overlay.style.display = 'flex';
-            document.querySelector('.dashboard-container').style.display = 'none';
+            // Hide only the main dashboard content area; keep the fixed header visible
+            document.querySelector('.dashboard-container').style.display = 'block';
+            // Hide the center content but keep header and right-panel visible so header remains on top
+            try { document.querySelector('.center-dashboard').style.display = 'none'; } catch(e) {}
         } else {
             overlay.style.display = 'none';
             document.querySelector('.dashboard-container').style.display = 'flex';
+            try { document.querySelector('.center-dashboard').style.display = 'flex'; } catch(e) {}
         }
 
         // Dynamically scale right-panel elements using a constrained viewport-derived token.
@@ -270,7 +275,7 @@
             // scaleFactor chosen so typical desktop widths produce ~12-16px base
             const scaleFactor = 0.01; // 1% of the smaller viewport dimension
             let base = Math.round(minDim * scaleFactor);
-            const minPx = 10; // minimum base in px
+            const minPx = 8; // minimum base in px (lowered so small screens shrink more)
             const maxPx = 18; // maximum base in px
             if (base < minPx) base = minPx;
             if (base > maxPx) base = maxPx;

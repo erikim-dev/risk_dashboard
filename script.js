@@ -456,9 +456,11 @@ class RiskDashboard {
                     // compute top position so the overlay starts below the nearest preceding .control-environment heading
                     let headingEl = null;
                     try {
+                        // Prefer the nearest preceding .control-environment inside the same right-panel
                         let heading = ci.previousElementSibling;
                         while (heading && !heading.classList.contains('control-environment')) heading = heading.previousElementSibling;
-                        if (!heading) heading = document.querySelector('.right-panel .control-environment') || document.querySelector('.control-environment');
+                        // If none found, only then fall back to the right-panel scoped heading
+                        if (!heading) heading = rightPanel.querySelector('.control-environment') || null;
                         headingEl = heading || null;
                         if (headingEl && rightPanel.contains(headingEl)) {
                             const hRect = headingEl.getBoundingClientRect();
@@ -472,6 +474,7 @@ class RiskDashboard {
                             // hide heading from assistive tech while overlay is present
                             try { headingEl.setAttribute('aria-hidden', 'true'); } catch(e){}
                         } else {
+                            // No heading in this panel; position near the top of the right-panel
                             wrapper.style.position = 'absolute'; wrapper.style.left = '12px'; wrapper.style.right = '12px'; wrapper.style.top = '12px'; wrapper.style.zIndex = 1200;
                         }
                     } catch (e) { wrapper.style.position = 'absolute'; wrapper.style.left = '12px'; wrapper.style.right = '12px'; wrapper.style.top = '12px'; wrapper.style.zIndex = 1200; }
